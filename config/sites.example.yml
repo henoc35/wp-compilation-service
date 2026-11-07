@@ -1,0 +1,29 @@
+# Configuration des sites autorisés à demander des compilations.
+# Copier en config/sites.yml (ou coller le contenu dans la variable SITES_YAML).
+# Les secrets ne figurent jamais ici : « secret_env » donne le nom de la variable
+# d'environnement qui contient le secret partagé avec le plugin du site.
+
+sites:
+  - id: site-27
+    domains: [www.exemple.fr, exemple.fr]
+    secret_env: SECRET_SITE_27
+    # Point d'accès du plugin qui reçoit le résultat signé
+    callback_url: https://www.exemple.fr/wp-json/compilateur/v1/recevoir
+
+    # Facultatif : familles désactivées pour tout le site
+    # families: { navigation: false }
+
+    # Facultatif : sélecteurs toujours conservés dans le CSS critique ("/regex/" accepté)
+    # protected_selectors: ["/\\.mon-widget/"]
+
+    # Facultatif : scripts tiers supplémentaires (domaine, ou chemin commençant par /)
+    # third_party_extra: [widget.exemple-tiers.com, /wp-content/plugins/mon-suivi/]
+
+    # Facultatif : scripts jamais retardés (sous-chaîne de l'URL ou de l'id)
+    # never_delay: [mon-script-indispensable]
+
+    # Facultatif : zones masquées pendant la comparaison visuelle
+    # masks: [".bloc-meteo"]
+
+    # Facultatif : chemins exclus du préchargement de navigation
+    # navigation_exclude: ["/reservation/*"]

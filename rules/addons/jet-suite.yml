@@ -1,0 +1,25 @@
+name: jet-suite
+detect:
+  - /wp-content/plugins/jet-elements/
+  - /wp-content/plugins/jet-engine/
+  - /wp-content/plugins/jet-popup/
+  - /wp-content/plugins/jet-menu/
+  - /wp-content/plugins/jet-tabs/
+  - /wp-content/plugins/jet-blocks/
+  - /wp-content/plugins/jet-smart-filters/
+protected_selectors:
+  - /\.jet-popup/
+  - /\.jet-menu/
+  - /\.jet-mega-menu/
+  - /\.jet-mobile-menu/
+  - /\.jet-tabs/
+  - /\.jet-slider/
+  - /\.jet-carousel/
+  - /\.slick-/
+  - /\.jet-listing/
+  - /\.jet-hamburger/
+  - /active/
+never_delay:
+  - /wp-content/plugins/jet-
+  - slick
+masks: []

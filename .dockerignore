@@ -1,0 +1,9 @@
+node_modules
+data
+sortie
+test
+.git
+.github
+.env
+config/sites.yml
+*.log

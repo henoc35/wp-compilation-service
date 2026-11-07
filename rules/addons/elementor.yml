@@ -1,0 +1,25 @@
+name: elementor
+detect:
+  - /wp-content/plugins/elementor/
+# Sélecteurs toujours conservés dans le CSS critique (ajoutés par JavaScript)
+protected_selectors:
+  - /\.elementor-nav-menu--dropdown/
+  - /\.elementor-menu-toggle/
+  - /\.elementor-active/
+  - /\.swiper/
+  - /\.elementor-swiper/
+  - /\.e-lazyloaded/
+  - /\.elementor-sticky/
+  - /\.elementor-motion-effects/
+  - /\.animated/
+  - /\.elementor-popup-modal/
+  - /\.dialog-/
+# Scripts jamais retardés (sous-chaîne de l'URL ou de l'id du script)
+never_delay:
+  - /wp-content/plugins/elementor/
+  - /wp-content/plugins/elementor-pro/
+  - /wp-includes/js/jquery/
+  - swiper
+  - imagesloaded
+  - elementor-
+masks: []

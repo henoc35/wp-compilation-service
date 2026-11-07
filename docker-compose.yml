@@ -1,0 +1,73 @@
+# Déploiement du service de compilation (Coolify ou docker compose).
+# Les secrets des sites et le jeton administrateur se règlent en variables
+# d'environnement, jamais dans ce fichier.
+
+# Variables communes à l'API et au worker. Ajouter ici une ligne par secret de site,
+# par exemple SECRET_SITE_27: ${SECRET_SITE_27} : les deux services en ont besoin
+# (l'API pour vérifier les demandes, le worker pour signer l'envoi au plugin).
+x-common-env: &common-env
+  REDIS_URL: redis://redis:6379
+  CHROMIUM_CONCURRENCY: ${CHROMIUM_CONCURRENCY:-3}
+  DEBOUNCE_MS: ${DEBOUNCE_MS:-30000}
+  SITES_YAML: ${SITES_YAML:-}
+  MAX_ATTEMPTS: ${MAX_ATTEMPTS:-3}
+  MEASURE_RUNS: ${MEASURE_RUNS:-3}
+  NOISE_CHECK: ${NOISE_CHECK:-true}
+  VISUAL_THRESHOLD: ${VISUAL_THRESHOLD:-0.005}
+  FULLPAGE_THRESHOLD: ${FULLPAGE_THRESHOLD:-0.01}
+  HEIGHT_TOLERANCE: ${HEIGHT_TOLERANCE:-0.02}
+  LCP_TOLERANCE: ${LCP_TOLERANCE:-1.05}
+  NAVIGATION_MODE: ${NAVIGATION_MODE:-prefetch}
+  PAGE_TIMEOUT_MS: ${PAGE_TIMEOUT_MS:-60000}
+  ARTIFACTS_RETENTION_DAYS: ${ARTIFACTS_RETENTION_DAYS:-30}
+  # SECRET_SITE_27: ${SECRET_SITE_27}
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build: .
+    command: ["node", "src/api/start.js"]
+    environment:
+      <<: *common-env
+      PORT: "3000"
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?définir ADMIN_TOKEN}
+    expose:
+      - "3000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  worker:
+    build: .
+    command: ["node", "src/worker/start.js"]
+    environment:
+      <<: *common-env
+    volumes:
+      - artefacts:/app/data
+    # Chromium a besoin d'une mémoire partagée suffisante.
+    shm_size: "1gb"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  artefacts:

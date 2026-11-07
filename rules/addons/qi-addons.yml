@@ -1,0 +1,9 @@
+name: qi-addons
+detect:
+  - /wp-content/plugins/qi-addons-for-elementor/
+protected_selectors:
+  - /\.qodef-/
+never_delay:
+  - /wp-content/plugins/qi-addons-for-elementor/
+  - qi-addons
+masks: []

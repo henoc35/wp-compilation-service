@@ -1,0 +1,8 @@
+name: wpml
+detect:
+  - /wp-content/plugins/sitepress-multilingual-cms/
+protected_selectors:
+  - /\.wpml-ls/
+never_delay:
+  - /wp-content/plugins/sitepress-multilingual-cms/
+masks: []

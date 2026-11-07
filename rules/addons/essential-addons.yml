@@ -1,0 +1,9 @@
+name: essential-addons
+detect:
+  - /wp-content/plugins/essential-addons-for-elementor-lite/
+protected_selectors:
+  - /\.eael-/
+never_delay:
+  - /wp-content/plugins/essential-addons-for-elementor-lite/
+  - eael
+masks: []

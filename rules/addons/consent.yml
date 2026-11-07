@@ -1,0 +1,16 @@
+name: consentement
+detect:
+  - /wp-content/plugins/cookie-notice/
+  - /wp-content/plugins/complianz-gdpr/
+protected_selectors:
+  - /#cookie-notice/
+  - /\.cookie-notice/
+  - /\.cmplz-/
+never_delay:
+  - /wp-content/plugins/cookie-notice/
+  - /wp-content/plugins/complianz-gdpr/
+# Zones masquées pendant la comparaison visuelle (contenu variable)
+masks:
+  - "#cookie-notice"
+  - ".cmplz-cookiebanner"
+  - ".cmplz-manage-consent"

@@ -1,0 +1,32 @@
+# Scripts tiers retardés jusqu'à la première interaction (famille « scripts »).
+# Un script n'est retardé que s'il correspond à l'une de ces règles ET à aucune
+# règle « never_delay » d'un addon détecté ou du site.
+
+# Domaines des scripts externes
+hosts:
+  - googletagmanager.com
+  - google-analytics.com
+  - connect.facebook.net
+  - static.hotjar.com
+  - script.hotjar.com
+  - snap.licdn.com
+  - analytics.tiktok.com
+  - bat.bing.com
+  - www.clarity.ms
+  - static.ads-twitter.com
+
+# Chemins de plugins WordPress qui ne servent qu'au suivi
+paths:
+  - /wp-content/plugins/pixelyoursite/
+  - /wp-content/plugins/duracelltomi-google-tag-manager/
+  - /wp-content/plugins/official-facebook-pixel/
+
+# Scripts en ligne reconnus par leur contenu
+inline_signatures:
+  - googletagmanager.com/gtm.js
+  - "gtag("
+  - "fbq("
+  - static.hotjar.com
+  - clarity.ms/tag
+  - _linkedin_partner_id
+  - pysOptions

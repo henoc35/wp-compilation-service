@@ -1,0 +1,6 @@
+# Zones masquées sur tous les sites pendant la comparaison visuelle.
+masks:
+  - "iframe[src*='youtube']"
+  - "iframe[src*='vimeo']"
+  - "iframe[src*='google.com/maps']"
+  - "video"

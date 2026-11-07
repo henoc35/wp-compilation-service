@@ -1,0 +1,9 @@
+name: contact-form-7
+detect:
+  - /wp-content/plugins/contact-form-7/
+protected_selectors:
+  - /\.wpcf7/
+never_delay:
+  - /wp-content/plugins/contact-form-7/
+  - recaptcha
+masks: []

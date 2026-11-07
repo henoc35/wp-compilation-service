@@ -1,0 +1,6 @@
+node_modules/
+data/
+sortie/
+.env
+config/sites.yml
+*.log
