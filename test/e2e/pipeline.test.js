@@ -265,8 +265,20 @@ test('une page instable est détectée dès le contrôle de départ', { skip, ti
   const job = await waitForJob(res.json().jobId);
   assert.equal(job.result.status, 'failed');
   const payload = received.find((p) => p.url === `${fixture.url}/unstable/`);
-  assert.match(payload.reason, /Page instable/);
-  assert.equal(payload.attempts.length, 1, 'aucune tentative d\'optimisation après un contrôle de départ en échec');
+  assert.match(payload.reason, /Page instable : deux chargements successifs/);
+  assert.match(payload.reason, /\d+\.\d %/, 'le motif chiffre l\'écart');
+  assert.equal(payload.attempts.length, 0, 'aucun rendu supplémentaire pour une page instable');
+});
+
+test('un écart de rejeu sur une page stable est signalé comme tel, chiffré', { skip, timeout: 300000 }, async () => {
+  const res = await app.inject(signedRequest('POST', '/v1/compile', { url: `${fixture.url}/cookie-dependent/` }));
+  const job = await waitForJob(res.json().jobId);
+  assert.equal(job.result.status, 'failed');
+  const payload = received.find((p) => p.url === `${fixture.url}/cookie-dependent/`);
+  assert.match(payload.reason, /Contrôle de départ en échec/);
+  assert.doesNotMatch(payload.reason, /instable/);
+  assert.match(payload.reason, /hauteur \((mobile|desktop)\) : hauteur différente de/);
+  assert.equal(payload.attempts.length, 1);
   assert.equal(payload.attempts[0].attempt, 0);
 });
 

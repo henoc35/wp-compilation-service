@@ -66,6 +66,8 @@ function page({ title, trackerUrl, script }) {
 </html>`;
 }
 
+let unstableLoads = 0;
+
 export async function startFixtureSite() {
   const hero = solidPng(800, 420, [30, 80, 140]);
   const photo = solidPng(600, 300, [200, 160, 40]);
@@ -92,9 +94,17 @@ export async function startFixtureSite() {
         trackerUrl,
         script: path === '/' ? 'tracker.js' : 'banner.js',
       }));
+    } else if (path === '/cookie-dependent/') {
+      // Page stable, mais dont l'affichage dépend d'un cookie posé par la réponse
+      // du serveur : rejouée sans cette réponse, elle diffère de l'original.
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Set-Cookie', 'region=fr; Path=/');
+      res.end(page({ title: 'Page liée à un cookie', trackerUrl, script: 'tracker.js' }).replace('</body>',
+        "<script>if (document.cookie.indexOf('region=fr') !== -1) document.querySelector('.content').insertAdjacentHTML('beforeend', '<p>Bloc régional</p>'.repeat(40));</script></body>"));
     } else if (path === '/unstable/') {
       // Contenu différent à chaque chargement (comme un agenda ou un flux) : hauteur variable.
-      const n = 2 + Math.floor(Math.random() * 30);
+      unstableLoads += 1;
+      const n = 2 + unstableLoads * 12; // jamais deux fois la même hauteur
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.end(page({ title: 'Page instable', trackerUrl, script: 'tracker.js' }).replace('<p>Contenu de la page.</p>', '<p>Contenu de la page.</p>' + '<p>Ligne variable</p>'.repeat(n)));
     } else if (path.endsWith('frontend.css')) {

@@ -35,7 +35,12 @@ Chaque demande reçoit une réponse signée du service, quel que soit son sort :
 
 ### Contrôle de départ
 
-Avant toute optimisation, le service sert la page **telle quelle** par le même chemin que la version compilée et la compare à l'original (`BASELINE_CHECK`, activé par défaut). Si elles diffèrent déjà, la page est instable (contenu qui change à chaque chargement, cookie ou en-tête propre au site) : elle est déclarée en échec avec ce motif, sans essais inutiles. Désactiver ce contrôle n'est utile que pour diagnostiquer.
+Deux contrôles passent avant toute optimisation :
+
+1. **Stabilité** (avec `NOISE_CHECK`) : l'original est chargé deux fois. Si les deux chargements n'ont pas la même hauteur (écart supérieur à `HEIGHT_TOLERANCE`), la page change d'un chargement à l'autre (agenda, flux, contenu aléatoire) : elle est déclarée « Page instable », avec l'écart chiffré, sans autre rendu.
+2. **Rejeu** (`BASELINE_CHECK`) : la page est servie **telle quelle** par le même chemin que la version compilée et comparée à l'original. Si elle diffère déjà alors que l'original est stable, le motif « Contrôle de départ en échec » détaille les écarts (format, type, pourcentage). Cause typique : un affichage qui dépend de la réponse du serveur (cookie posé par la page, en-tête), que la version compilée ne reproduirait pas non plus. Les captures sont dans `attempt-0/` du rapport.
+
+Chaque essai écrit aussi le détail chiffré de ses écarts dans les journaux du worker (`details`).
 
 ### Familles d'optimisation
 

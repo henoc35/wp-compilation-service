@@ -7,6 +7,21 @@ import { resolveRules } from '../rules/index.js';
 import { enabledFamilies } from '../config.js';
 import { publishResult } from '../publish.js';
 
+const pct = (x) => `${(x * 100).toFixed(1)} %`;
+
+/** Échec lisible : « hauteur (mobile) : hauteur différente de 4.20 % ». */
+export function describeFailure(f) {
+  const labels = {
+    visual_viewport: "écart à l'ouverture", visual_viewport_only: "écart à l'ouverture", visual_full: 'écart sur la page complète',
+    height: 'hauteur', interaction: 'interaction', console: 'erreur JavaScript', seo: 'SEO', performance: 'LCP',
+  };
+  return `${labels[f.type] || f.type}${f.viewport ? ` (${f.viewport})` : ''} : ${f.detail || ''}`.trim();
+}
+
+export function describeFailures(failures) {
+  return failures.map(describeFailure).join(' ; ');
+}
+
 /** Familles qui ont réellement modifié la page (les autres ne peuvent rien casser). */
 export function changedFamilies(notes) {
   return Object.entries(notes || {}).filter(([, n]) => Array.isArray(n) && n.length).map(([f]) => f);
@@ -120,12 +135,23 @@ async function compileCore({ job, site, config, rules, store, progress, log }) {
       noise = {};
       for (const name of ['mobile', 'desktop']) {
         const again = await capture(browser, { url, viewportName: name, masks, timeoutMs: config.pageTimeoutMs });
+        const full = compareScreenshots(reference[name].screenshots.full, again.screenshots.full);
         noise[name] = {
           viewport: compareScreenshots(reference[name].screenshots.viewport, again.screenshots.viewport).ratio,
-          full: compareScreenshots(reference[name].screenshots.full, again.screenshots.full).ratio,
+          full: full.ratio,
+          height: full.heightDelta,
         };
       }
       result.noise = noise;
+      // Deux chargements de l'original n'ont pas la même hauteur : la page change
+      // d'un chargement à l'autre et aucune version ne peut être vérifiée.
+      const unstable = ['mobile', 'desktop'].filter((n) => noise[n].height > config.heightTolerance);
+      if (unstable.length) {
+        result.status = 'failed';
+        result.reason = `Page instable : deux chargements successifs de l'original n'ont pas la même hauteur (${unstable.map((n) => `${n} ${pct(noise[n].height)}`).join(', ')}). Causes fréquentes : agenda, flux ou contenu aléatoire, bannière qui apparaît ou non.`;
+        log.info?.({ url, noise }, 'page instable');
+        return result;
+      }
     }
 
     // 3. LCP de référence en conditions bridées
@@ -165,7 +191,7 @@ async function compileCore({ job, site, config, rules, store, progress, log }) {
         attempt, families: active, notes: optimized.notes, ok: verdict.ok,
         failures: verdict.failures.map(({ diffs, ...f }) => f), metrics: verdict.metrics,
       });
-      log.info?.({ url, attempt, ok: verdict.ok, failures: verdict.failures.map((f) => f.type) }, 'tentative terminée');
+      log.info?.({ url, attempt, ok: verdict.ok, failures: verdict.failures.map((f) => f.type), details: verdict.failures.map(describeFailure) }, 'tentative terminée');
       return { optimized, verdict };
     };
 
@@ -180,9 +206,8 @@ async function compileCore({ job, site, config, rules, store, progress, log }) {
     if (config.baselineCheck) {
       const baseline = await runAttempt(0, [], { ...config, measureRuns: 0 });
       if (!baseline.verdict.ok) {
-        const types = [...new Set(baseline.verdict.failures.map((f) => f.type))].join(', ');
         result.status = 'failed';
-        result.reason = `Page instable : sans aucune optimisation, elle diffère déjà de l'original (${types}). Causes fréquentes : contenu qui change à chaque chargement, cookie ou en-tête propre au site.`;
+        result.reason = `Contrôle de départ en échec : la page servie par le service sans aucune optimisation diffère déjà de l'original (${describeFailures(baseline.verdict.failures)}), alors que deux chargements de l'original sont identiques. Le service ne peut pas la vérifier : voir les captures attempt-0 du rapport.`;
         return result;
       }
     }
@@ -223,6 +248,9 @@ async function compileCore({ job, site, config, rules, store, progress, log }) {
         result.lcp = { ...result.lcp, candidate: best.verdict.metrics.lcp.candidate, candidateRuns: best.verdict.metrics.lcp.runs };
       }
       result.html = best.optimized.html;
+    } else {
+      const last = result.attempts[result.attempts.length - 1];
+      result.reason = `Aucune version identique à l'original trouvée${last ? ` (dernier essai : ${describeFailures(last.failures)})` : ''}.`;
     }
   } finally {
     await browser.close().catch(() => {});
