@@ -45,11 +45,11 @@ if (isMain) {
   const sites = loadSites(config.sitesFile);
   const rules = loadRules(config.rulesDir);
   const worker = createWorker({ config, sites, rules });
-  log.info({ concurrence: config.chromiumConcurrency, sites: sites.size, fiches: rules.addons.length }, 'worker démarré');
+  log.info({ concurrency: config.chromiumConcurrency, sites: sites.size, rules: rules.addons.length }, 'worker démarré');
 
   const purge = async () => {
     const n = await purgeArtifacts(path.join(config.dataDir, 'jobs'), config.artifactsRetentionDays);
-    if (n) log.info({ supprimes: n }, 'artefacts anciens supprimés');
+    if (n) log.info({ removed: n }, 'artifacts anciens supprimés');
   };
   purge();
   const timer = setInterval(purge, 24 * 3600 * 1000);

@@ -32,7 +32,7 @@ export async function optimize(html, ctx, families) {
   }
 
   // Marqueur discret, utile au plugin et au diagnostic.
-  $('head').append(`<meta name="compilateur" content="${applied.concat(families.includes('css') ? ['css'] : []).join(',')}">`);
+  $('head').append(`<meta name="page-compiler" content="${applied.concat(families.includes('css') ? ['css'] : []).join(',')}">`);
   let out = $.html();
 
   if (families.includes('css')) {

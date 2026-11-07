@@ -20,4 +20,4 @@ process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
 await app.listen({ port: config.port, host: config.host });
-app.log.info({ sites: sites.size, concurrence: config.chromiumConcurrency }, 'API du service de compilation démarrée');
+app.log.info({ sites: sites.size, concurrency: config.chromiumConcurrency }, 'API du service de compilation démarrée');

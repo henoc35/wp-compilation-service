@@ -37,7 +37,7 @@ export function rankSuspects(failures, active, changed) {
  * @param {object|null} p.site  configuration du site (null en ligne de commande sans site)
  * @param {object} p.config
  * @param {object} p.rules      base de règles chargée
- * @param {object} p.store      artefacts (voir artifacts.js)
+ * @param {object} p.store      artifacts (voir artifacts.js)
  * @param {Function} [p.progress]
  * @param {object} [p.log]
  * @param {boolean} [p.publish=true]
@@ -49,7 +49,7 @@ export function rankSuspects(failures, active, changed) {
  */
 export async function resolveFinalUrl(url, timeoutMs = 30000) {
   try {
-    const res = await fetch(url, { headers: { 'x-compilateur-bypass': '1' }, redirect: 'follow', signal: AbortSignal.timeout(timeoutMs) });
+    const res = await fetch(url, { headers: { 'x-page-compiler-bypass': '1' }, redirect: 'follow', signal: AbortSignal.timeout(timeoutMs) });
     await res.body?.cancel();
     return res.url || url;
   } catch {
@@ -104,7 +104,7 @@ export async function runCompilation({ job, site, config, rules, store, progress
       result.reason = `réponse HTTP ${reference.mobile.status}`;
       return result;
     }
-    if (/<meta[^>]+name=["']compilateur["']/i.test(rawHtml)) {
+    if (/<meta[^>]+name=["']page-compiler["']/i.test(rawHtml)) {
       result.status = 'skipped';
       result.reason = 'la page reçue est déjà une version compilée (vider le service des pages avant de recompiler)';
       return result;
@@ -156,7 +156,7 @@ export async function runCompilation({ job, site, config, rules, store, progress
     const families = enabledFamilies(site, job.families);
     const runAttempt = async (attempt, active) => {
       await progress({ step: 'attempt', attempt, families: active });
-      const save = store.scope(`tentative-${attempt}`);
+      const save = store.scope(`attempt-${attempt}`);
       const optimized = await optimize(rawHtml, ctx, active);
       await save('candidate.html', optimized.html);
       const verdict = await verifyCandidate(browser, {

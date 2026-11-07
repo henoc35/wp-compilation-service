@@ -44,7 +44,7 @@ test('demande signée avec un mauvais secret refusée', async () => {
   const { app } = setup();
   const res = await app.inject({ method: 'POST', url: '/v1/compile', ...signed({ url: 'https://www.exemple.fr/' }, { secret: 'faux' }) });
   assert.equal(res.statusCode, 401);
-  assert.equal(res.json().error, 'signature_invalide');
+  assert.equal(res.json().error, 'invalid_signature');
 });
 
 test('URL d’un autre domaine refusée', async () => {

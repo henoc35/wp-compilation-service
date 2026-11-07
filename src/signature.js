@@ -5,14 +5,14 @@ import crypto from 'node:crypto';
  *
  * Message signé : `${timestamp}.${METHODE}.${chemin}.${corps}`
  * En-têtes :
- *   X-Compilateur-Site       identifiant du site
- *   X-Compilateur-Timestamp  secondes Unix
- *   X-Compilateur-Signature  sha256=<hex>
+ *   X-Page-Compiler-Site       identifiant du site
+ *   X-Page-Compiler-Timestamp  secondes Unix
+ *   X-Page-Compiler-Signature  sha256=<hex>
  */
 export const HEADERS = {
-  site: 'x-compilateur-site',
-  timestamp: 'x-compilateur-timestamp',
-  signature: 'x-compilateur-signature',
+  site: 'x-page-compiler-site',
+  timestamp: 'x-page-compiler-timestamp',
+  signature: 'x-page-compiler-signature',
 };
 
 export function signatureMessage({ timestamp, method, path, body }) {
@@ -28,9 +28,9 @@ export function sign(secret, parts) {
 export function signedHeaders({ siteId, secret, method, path, body, now = Date.now() }) {
   const timestamp = String(Math.floor(now / 1000));
   return {
-    'X-Compilateur-Site': siteId,
-    'X-Compilateur-Timestamp': timestamp,
-    'X-Compilateur-Signature': sign(secret, { timestamp, method, path, body }),
+    'X-Page-Compiler-Site': siteId,
+    'X-Page-Compiler-Timestamp': timestamp,
+    'X-Page-Compiler-Signature': sign(secret, { timestamp, method, path, body }),
   };
 }
 
@@ -39,15 +39,15 @@ export function signedHeaders({ siteId, secret, method, path, body, now = Date.n
  * Comparaison en temps constant ; horodatage limité pour bloquer le rejeu.
  */
 export function verify({ secret, timestamp, signature, method, path, body, maxAgeSeconds = 300, now = Date.now() }) {
-  if (!secret) return { ok: false, reason: 'secret_absent' };
-  if (!timestamp || !signature) return { ok: false, reason: 'en_tetes_absents' };
+  if (!secret) return { ok: false, reason: 'missing_secret' };
+  if (!timestamp || !signature) return { ok: false, reason: 'missing_headers' };
   const ts = Number.parseInt(timestamp, 10);
-  if (!Number.isFinite(ts)) return { ok: false, reason: 'horodatage_invalide' };
-  if (Math.abs(Math.floor(now / 1000) - ts) > maxAgeSeconds) return { ok: false, reason: 'horodatage_expire' };
+  if (!Number.isFinite(ts)) return { ok: false, reason: 'invalid_timestamp' };
+  if (Math.abs(Math.floor(now / 1000) - ts) > maxAgeSeconds) return { ok: false, reason: 'expired_timestamp' };
   const expected = Buffer.from(sign(secret, { timestamp, method, path, body }));
   const given = Buffer.from(String(signature));
   if (expected.length !== given.length || !crypto.timingSafeEqual(expected, given)) {
-    return { ok: false, reason: 'signature_invalide' };
+    return { ok: false, reason: 'invalid_signature' };
   }
   return { ok: true };
 }

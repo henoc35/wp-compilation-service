@@ -39,7 +39,7 @@ const site = siteForUrl(sites, values.url);
 const rules = loadRules(config.rulesDir);
 const families = values.families ? values.families.split(',').map((s) => s.trim()) : null;
 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-const out = path.resolve(values.out || path.join('sortie', `${new URL(values.url).hostname}-${stamp}`));
+const out = path.resolve(values.out || path.join('output', `${new URL(values.url).hostname}-${stamp}`));
 
 const result = await runCompilation({
   job: { url: values.url, families },

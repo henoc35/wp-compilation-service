@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-/** Dossier d'artefacts d'une compilation : captures, différences, HTML candidat, rapport. */
+/** Dossier d'artifacts d'une compilation : captures, différences, HTML candidat, rapport. */
 export function artifactStore(baseDir) {
   return {
     dir: baseDir,

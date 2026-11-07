@@ -87,7 +87,7 @@ async function startReceiver() {
     });
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  return { server, url: `http://127.0.0.1:${server.address().port}/wp-json/compilateur/v1/recevoir` };
+  return { server, url: `http://127.0.0.1:${server.address().port}/wp-json/page-compiler/v1/receive` };
 }
 
 function signedRequest(method, url, body) {
@@ -126,7 +126,7 @@ before(async () => {
     debounceMs: 200,
     chromiumPath: CHROMIUM,
     chromiumExtraArgs: ['--disable-features=LocalNetworkAccessChecks,BlockInsecurePrivateNetworkRequests,PrivateNetworkAccessSendPreflights'],
-    dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'compilateur-e2e-')),
+    dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'page-compiler-e2e-')),
     measureRuns: 1,
   };
   const sites = new Map([['site-test', {
@@ -187,7 +187,7 @@ test('la file plafonne à 3 compilations simultanées, tous workers confondus', 
 });
 
 test('les demandes répétées pour la même page sont regroupées', { skip }, async () => {
-  const body = { url: `${fixture.url}/regroupement/` };
+  const body = { url: `${fixture.url}/dedup/` };
   const a = await app.inject(signedRequest('POST', '/v1/compile', body));
   const b = await app.inject(signedRequest('POST', '/v1/compile', body));
   assert.equal(a.statusCode, 202);
@@ -217,12 +217,12 @@ test('une page compatible est compilée, vérifiée et publiée au plugin', { sk
 });
 
 test('une optimisation qui casse l’affichage est isolée et retirée', { skip, timeout: 300000 }, async () => {
-  const res = await app.inject(signedRequest('POST', '/v1/compile', { url: `${fixture.url}/casse/` }));
+  const res = await app.inject(signedRequest('POST', '/v1/compile', { url: `${fixture.url}/broken/` }));
   const job = await waitForJob(res.json().jobId);
   assert.equal(job.state, 'completed');
   assert.equal(job.result.status, 'compiled_partial');
   assert.deepEqual(job.result.familiesDisabled, ['scripts']);
-  const payload = received.find((p) => p.url === `${fixture.url}/casse/`);
+  const payload = received.find((p) => p.url === `${fixture.url}/broken/`);
   assert.equal(payload.status, 'compiled_partial');
   assert.doesNotMatch(payload.html, /data-cw-delay/);
 });

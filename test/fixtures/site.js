@@ -30,7 +30,7 @@ const CSS = `body{margin:0;font-family:Arial,sans-serif}
 .content{padding:20px}
 .photo{width:100%;height:300px;display:block}
 .banner{background:#c00;color:#fff;padding:30px;font-size:24px}
-.jamais-utilise{color:red}`;
+.never-used{color:red}`;
 
 const FRONTEND_JS = `document.querySelectorAll('.elementor-menu-toggle').forEach(function(t){t.addEventListener('click',function(){t.classList.toggle('elementor-active')})});
 window.addEventListener('load',function(){setTimeout(function(){document.querySelectorAll('.elementor-invisible').forEach(function(el){el.classList.remove('elementor-invisible');el.classList.add('animated')})},300)});`;
@@ -61,7 +61,7 @@ function page({ title, trackerUrl, script }) {
   <img class="photo" src="/img/photo.png" alt="Photo">
 </div>
 <script src="/wp-content/plugins/elementor/assets/js/frontend.js?ver=4.3.6" id="elementor-frontend-js"></script>
-<script src="${trackerUrl}/${script}" id="suivi-js"></script>
+<script src="${trackerUrl}/${script}" id="tracker-js"></script>
 </body>
 </html>`;
 }
@@ -75,7 +75,7 @@ export async function startFixtureSite() {
     if (req.url.startsWith('/banner.js')) {
       res.end("document.body.insertAdjacentHTML('afterbegin','<div class=\"banner\">Bandeau injecté par un script tiers</div>');");
     } else {
-      res.end('window.__suivi = true;');
+      res.end('window.__tracker = true;');
     }
   });
   await new Promise((r) => tracker.listen(0, '127.0.0.1', r));
@@ -83,14 +83,14 @@ export async function startFixtureSite() {
 
   const requests = [];
   const site = http.createServer((req, res) => {
-    requests.push({ url: req.url, bypass: req.headers['x-compilateur-bypass'] || null });
+    requests.push({ url: req.url, bypass: req.headers['x-page-compiler-bypass'] || null });
     const path = req.url.split('?')[0];
-    if (path === '/' || path === '/casse/') {
+    if (path === '/' || path === '/broken/') {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.end(page({
         title: path === '/' ? 'Accueil' : 'Page cassée par l’optimisation',
         trackerUrl,
-        script: path === '/' ? 'suivi.js' : 'banner.js',
+        script: path === '/' ? 'tracker.js' : 'banner.js',
       }));
     } else if (path.endsWith('frontend.css')) {
       res.setHeader('Content-Type', 'text/css');
@@ -106,7 +106,7 @@ export async function startFixtureSite() {
       res.end(photo);
     } else {
       res.statusCode = 404;
-      res.end('introuvable');
+      res.end('not_found');
     }
   });
   await new Promise((r) => site.listen(0, '127.0.0.1', r));

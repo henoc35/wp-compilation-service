@@ -1,26 +1,9 @@
 # Déploiement du service de compilation (Coolify ou docker compose).
-# Les secrets des sites et le jeton administrateur se règlent en variables
-# d'environnement, jamais dans ce fichier.
-
-# Variables communes à l'API et au worker. Ajouter ici une ligne par secret de site,
-# par exemple SECRET_SITE_27: ${SECRET_SITE_27} : les deux services en ont besoin
-# (l'API pour vérifier les demandes, le worker pour signer l'envoi au plugin).
-x-common-env: &common-env
-  REDIS_URL: redis://redis:6379
-  CHROMIUM_CONCURRENCY: ${CHROMIUM_CONCURRENCY:-3}
-  DEBOUNCE_MS: ${DEBOUNCE_MS:-30000}
-  SITES_YAML: ${SITES_YAML:-}
-  MAX_ATTEMPTS: ${MAX_ATTEMPTS:-3}
-  MEASURE_RUNS: ${MEASURE_RUNS:-3}
-  NOISE_CHECK: ${NOISE_CHECK:-true}
-  VISUAL_THRESHOLD: ${VISUAL_THRESHOLD:-0.005}
-  FULLPAGE_THRESHOLD: ${FULLPAGE_THRESHOLD:-0.01}
-  HEIGHT_TOLERANCE: ${HEIGHT_TOLERANCE:-0.02}
-  LCP_TOLERANCE: ${LCP_TOLERANCE:-1.05}
-  NAVIGATION_MODE: ${NAVIGATION_MODE:-prefetch}
-  PAGE_TIMEOUT_MS: ${PAGE_TIMEOUT_MS:-60000}
-  ARTIFACTS_RETENTION_DAYS: ${ARTIFACTS_RETENTION_DAYS:-30}
-  # SECRET_SITE_27: ${SECRET_SITE_27}
+# Les valeurs se règlent dans les variables d'environnement de Coolify,
+# jamais dans ce fichier.
+#
+# Ajout d'un site : ajouter sa ligne SECRET_SITE_xx dans « api » ET dans « worker »
+# (l'API vérifie les demandes, le worker signe l'envoi au plugin).
 
 services:
   redis:
@@ -39,11 +22,14 @@ services:
     build: .
     command: ["node", "src/api/start.js"]
     environment:
-      <<: *common-env
+      REDIS_URL: redis://redis:6379
       PORT: "3000"
-      ADMIN_TOKEN: ${ADMIN_TOKEN:?définir ADMIN_TOKEN}
-    expose:
-      - "3000"
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?}
+      SITES_YAML: ${SITES_YAML:?}
+      CHROMIUM_CONCURRENCY: ${CHROMIUM_CONCURRENCY:-3}
+      DEBOUNCE_MS: ${DEBOUNCE_MS:-30000}
+      # Secrets des sites (un par site, mêmes lignes dans « worker ») :
+      SECRET_SITE_01: ${SECRET_SITE_01:-}
     depends_on:
       redis:
         condition: service_healthy
@@ -58,16 +44,35 @@ services:
     build: .
     command: ["node", "src/worker/start.js"]
     environment:
-      <<: *common-env
+      REDIS_URL: redis://redis:6379
+      SITES_YAML: ${SITES_YAML:?}
+      CHROMIUM_CONCURRENCY: ${CHROMIUM_CONCURRENCY:-3}
+      MAX_ATTEMPTS: ${MAX_ATTEMPTS:-3}
+      MEASURE_RUNS: ${MEASURE_RUNS:-3}
+      NOISE_CHECK: ${NOISE_CHECK:-true}
+      VISUAL_THRESHOLD: ${VISUAL_THRESHOLD:-0.005}
+      FULLPAGE_THRESHOLD: ${FULLPAGE_THRESHOLD:-0.01}
+      HEIGHT_TOLERANCE: ${HEIGHT_TOLERANCE:-0.02}
+      LCP_TOLERANCE: ${LCP_TOLERANCE:-1.05}
+      NAVIGATION_MODE: ${NAVIGATION_MODE:-prefetch}
+      PAGE_TIMEOUT_MS: ${PAGE_TIMEOUT_MS:-60000}
+      ARTIFACTS_RETENTION_DAYS: ${ARTIFACTS_RETENTION_DAYS:-30}
+      # Secrets des sites (mêmes lignes que dans « api ») :
+      SECRET_SITE_01: ${SECRET_SITE_01:-}
     volumes:
-      - artefacts:/app/data
+      - artifacts:/app/data
     # Chromium a besoin d'une mémoire partagée suffisante.
     shm_size: "1gb"
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.exit(0)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
 
 volumes:
   redis-data:
-  artefacts:
+  artifacts:

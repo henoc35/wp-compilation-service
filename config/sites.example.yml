@@ -8,7 +8,7 @@ sites:
     domains: [www.exemple.fr, exemple.fr]
     secret_env: SECRET_SITE_27
     # Point d'accès du plugin qui reçoit le résultat signé
-    callback_url: https://www.exemple.fr/wp-json/compilateur/v1/recevoir
+    callback_url: https://www.exemple.fr/wp-json/page-compiler/v1/receive
 
     # Facultatif : familles désactivées pour tout le site
     # families: { navigation: false }

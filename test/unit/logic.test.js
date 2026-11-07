@@ -40,7 +40,7 @@ test('sites : secrets lus depuis l’environnement, exceptions de familles', () 
   - id: site-27
     domains: [www.exemple.fr]
     secret_env: SECRET_SITE_27
-    callback_url: https://www.exemple.fr/wp-json/compilateur/v1/recevoir
+    callback_url: https://www.exemple.fr/wp-json/page-compiler/v1/receive
     families: { navigation: false }
 `);
   const sites = loadSites(file, { SECRET_SITE_27: 'abc' });

@@ -27,14 +27,14 @@ async function routeCandidate(context, url, html) {
 }
 
 /**
- * Rendu de l'original : la requête du document porte l'en-tête X-Compilateur-Bypass,
+ * Rendu de l'original : la requête du document porte l'en-tête X-Page-Compiler-Bypass,
  * pour que le plugin serve la page WordPress et non une version déjà compilée.
  * L'en-tête n'est ajouté qu'au document (jamais aux ressources tierces).
  */
 async function routeBypass(context, url) {
   await context.route((u) => sameDocument(u.toString(), url), async (route) => {
     if (route.request().resourceType() !== 'document') return route.continue();
-    return route.continue({ headers: { ...route.request().headers(), 'x-compilateur-bypass': '1' } });
+    return route.continue({ headers: { ...route.request().headers(), 'x-page-compiler-bypass': '1' } });
   });
 }
 
@@ -42,7 +42,7 @@ async function routeBypass(context, url) {
 async function routeOriginalDocument(context, url) {
   await context.route((u) => sameDocument(u.toString(), url), async (route) => {
     if (route.request().resourceType() !== 'document') return route.continue();
-    const response = await route.fetch({ headers: { ...route.request().headers(), 'x-compilateur-bypass': '1' } });
+    const response = await route.fetch({ headers: { ...route.request().headers(), 'x-page-compiler-bypass': '1' } });
     return route.fulfill({ response });
   });
 }

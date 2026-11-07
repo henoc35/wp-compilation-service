@@ -104,7 +104,7 @@ test('optimiseur : seules les familles demandées sont appliquées', async () =>
   assert.deepEqual(res.applied, ['animations', 'fonts']);
   assert.ok(!res.html.includes('data-cw-delay'));
   assert.ok(!res.html.includes('speculationrules'));
-  assert.match(res.html, /<meta name="compilateur" content="animations,fonts">/);
+  assert.match(res.html, /<meta name="page-compiler" content="animations,fonts">/);
 });
 
 test('règles : addons détectés dans le HTML', () => {

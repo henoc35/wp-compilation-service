@@ -1,4 +1,4 @@
-name: consentement
+name: consent
 detect:
   - /wp-content/plugins/cookie-notice/
   - /wp-content/plugins/complianz-gdpr/

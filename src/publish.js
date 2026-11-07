@@ -9,8 +9,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * Jusqu'à 3 tentatives en cas d'erreur réseau ou de réponse 5xx.
  */
 export async function publishResult(site, payload, { timeoutMs = 30000, retries = 3 } = {}) {
-  if (!site?.callbackUrl) return { published: false, reason: 'pas_de_callback' };
-  if (!site.secret) return { published: false, reason: 'secret_absent' };
+  if (!site?.callbackUrl) return { published: false, reason: 'no_callback' };
+  if (!site.secret) return { published: false, reason: 'missing_secret' };
   const url = new URL(site.callbackUrl);
   const body = JSON.stringify(payload);
   let last = null;
