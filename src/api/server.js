@@ -107,6 +107,7 @@ export function buildServer({ config, sites, queue, logger = true }) {
       progress: job.progress,
       result: result && {
         status: result.status,
+        reason: result.reason || null,
         familiesApplied: result.familiesApplied,
         familiesDisabled: result.familiesDisabled,
         attempts: result.attempts?.length ?? 0,

@@ -57,8 +57,7 @@ export async function resolveFinalUrl(url, timeoutMs = 30000) {
   }
 }
 
-export async function runCompilation({ job, site, config, rules, store, progress = async () => {}, log = console, publish = true }) {
-  const startedAt = Date.now();
+async function compileCore({ job, site, config, rules, store, progress, log }) {
   const result = {
     jobId: job.jobId || null,
     siteId: site?.id || null,
@@ -154,13 +153,13 @@ export async function runCompilation({ job, site, config, rules, store, progress
 
     // 4. Optimisation et vérification, avec isolation de la famille fautive
     const families = enabledFamilies(site, job.families);
-    const runAttempt = async (attempt, active) => {
+    const runAttempt = async (attempt, active, cfg = config) => {
       await progress({ step: 'attempt', attempt, families: active });
       const save = store.scope(`attempt-${attempt}`);
       const optimized = await optimize(rawHtml, ctx, active);
       await save('candidate.html', optimized.html);
       const verdict = await verifyCandidate(browser, {
-        url, rawHtml, candidateHtml: optimized.html, reference, noise, referenceLcp, config, masks, save,
+        url, rawHtml, candidateHtml: optimized.html, reference, noise, referenceLcp, config: cfg, masks, save,
       });
       result.attempts.push({
         attempt, families: active, notes: optimized.notes, ok: verdict.ok,
@@ -174,6 +173,19 @@ export async function runCompilation({ job, site, config, rules, store, progress
     const keep = (active, disabled, run) => {
       best = { active, disabled, ...run };
     };
+
+    // Contrôle de départ : la page servie telle quelle, sans aucune optimisation, doit
+    // déjà être identique à l'original. Sinon elle est instable et ne peut pas être
+    // vérifiée : inutile de retirer les optimisations une à une.
+    if (config.baselineCheck) {
+      const baseline = await runAttempt(0, [], { ...config, measureRuns: 0 });
+      if (!baseline.verdict.ok) {
+        const types = [...new Set(baseline.verdict.failures.map((f) => f.type))].join(', ');
+        result.status = 'failed';
+        result.reason = `Page instable : sans aucune optimisation, elle diffère déjà de l'original (${types}). Causes fréquentes : contenu qui change à chaque chargement, cookie ou en-tête propre au site.`;
+        return result;
+      }
+    }
 
     const first = await runAttempt(1, families);
     if (first.verdict.ok) {
@@ -216,16 +228,26 @@ export async function runCompilation({ job, site, config, rules, store, progress
     await browser.close().catch(() => {});
   }
 
+  return result;
+}
+
+/**
+ * Compile une page puis envoie le résultat au plugin du site — toujours, y compris
+ * pour une page ignorée ou en échec, pour qu'aucune page ne reste « En cours ».
+ */
+export async function runCompilation({ job, site, config, rules, store, progress = async () => {}, log = console, publish = true }) {
+  const startedAt = Date.now();
+  const result = await compileCore({ job, site, config, rules, store, progress, log });
   result.durationMs = Date.now() - startedAt;
 
-  // 5. Publication vers le plugin du site
-  if (publish && site && result.status !== 'skipped') {
+  if (publish && site) {
     await progress({ step: 'publish' });
     const { html, ...summary } = result;
+    const ok = result.status === 'compiled' || result.status === 'compiled_partial';
     result.published = await publishResult(site, {
       ...summary,
-      attempts: summary.attempts.map(({ attempt, families, ok, failures }) => ({ attempt, families, ok, failures })),
-      html: result.status === 'failed' ? null : html,
+      attempts: summary.attempts.map(({ attempt, families, ok: passed, failures }) => ({ attempt, families, ok: passed, failures })),
+      html: ok ? html : null,
       compiledAt: new Date().toISOString(),
     }, { timeoutMs: config.callbackTimeoutMs });
   }

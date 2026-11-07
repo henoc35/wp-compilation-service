@@ -2,8 +2,10 @@
 # Les valeurs se règlent dans les variables d'environnement de Coolify,
 # jamais dans ce fichier.
 #
-# Ajout d'un site : ajouter sa ligne SECRET_SITE_xx dans « api » ET dans « worker »
-# (l'API vérifie les demandes, le worker signe l'envoi au plugin).
+# Secrets des sites : le plus simple est de les écrire directement dans SITES_YAML
+# (champ « secret »), sans toucher à ce fichier. Variante : « secret_env » dans
+# SITES_YAML, et la ligne SECRET_SITE_xx ajoutée ci-dessous dans « api » ET dans
+# « worker » (l'API vérifie les demandes, le worker signe l'envoi au plugin).
 
 services:
   redis:
@@ -50,6 +52,8 @@ services:
       MAX_ATTEMPTS: ${MAX_ATTEMPTS:-3}
       MEASURE_RUNS: ${MEASURE_RUNS:-3}
       NOISE_CHECK: ${NOISE_CHECK:-true}
+      BASELINE_CHECK: ${BASELINE_CHECK:-true}
+      SITE_RETRY_DELAY_MS: ${SITE_RETRY_DELAY_MS:-5000}
       VISUAL_THRESHOLD: ${VISUAL_THRESHOLD:-0.005}
       FULLPAGE_THRESHOLD: ${FULLPAGE_THRESHOLD:-0.01}
       HEIGHT_TOLERANCE: ${HEIGHT_TOLERANCE:-0.02}

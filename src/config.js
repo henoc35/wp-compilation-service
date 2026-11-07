@@ -32,6 +32,8 @@ export function loadConfig() {
     queueName: env.QUEUE_NAME || 'compilation',
     /** Nombre maximal de compilations (donc de Chromium) simultanées, tous workers confondus. */
     chromiumConcurrency: int('CHROMIUM_CONCURRENCY', 3),
+    /** Délai avant de réessayer une tâche dont le site est déjà en cours de compilation (ms). */
+    siteRetryDelayMs: int('SITE_RETRY_DELAY_MS', 5000),
     /** Regroupement des demandes d'une même page (ms). */
     debounceMs: int('DEBOUNCE_MS', 30000),
     sitesFile: env.SITES_FILE || path.resolve('config/sites.yml'),
@@ -46,6 +48,8 @@ export function loadConfig() {
     fullPageThreshold: float('FULLPAGE_THRESHOLD', 0.01),
     heightTolerance: float('HEIGHT_TOLERANCE', 0.02),
     noiseCheck: bool('NOISE_CHECK', true),
+    /** Contrôle de départ sans optimisation (détecte les pages instables). */
+    baselineCheck: bool('BASELINE_CHECK', true),
     measureRuns: int('MEASURE_RUNS', 3),
     lcpTolerance: float('LCP_TOLERANCE', 1.05),
     signatureMaxAgeSeconds: int('SIGNATURE_MAX_AGE', 300),
@@ -56,8 +60,9 @@ export function loadConfig() {
 }
 
 /**
- * Charge la liste des sites. Les secrets ne sont jamais dans le fichier :
- * chaque site indique le nom de la variable d'environnement qui contient le sien.
+ * Charge la liste des sites (fichier ou variable SITES_YAML). Chaque site donne son
+ * secret directement (« secret », à réserver à SITES_YAML qui est une variable
+ * protégée) ou le nom de la variable d'environnement qui le contient (« secret_env »).
  */
 export function loadSites(file, environment = env) {
   // SITES_YAML (contenu YAML en variable d'environnement) est pratique sous Coolify.
@@ -70,7 +75,9 @@ export function loadSites(file, environment = env) {
   const sites = new Map();
   for (const raw of doc.sites || []) {
     if (!raw.id) throw new Error('Site sans identifiant dans la configuration des sites');
-    const secret = raw.secret_env ? environment[raw.secret_env] : undefined;
+    // Secret écrit directement dans la configuration (« secret »), ou nom de la
+    // variable d'environnement qui le contient (« secret_env »).
+    const secret = raw.secret ? String(raw.secret) : (raw.secret_env ? environment[raw.secret_env] : undefined);
     sites.set(raw.id, {
       id: raw.id,
       domains: (raw.domains || []).map((d) => String(d).toLowerCase()),

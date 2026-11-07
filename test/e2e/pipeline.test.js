@@ -36,6 +36,7 @@ let redis;
 let fixture;
 let receiver;
 let received = [];
+const events = [];
 let config;
 let queue;
 let app;
@@ -144,7 +145,8 @@ before(async () => {
   queue = await createQueue(config);
   app = buildServer({ config, sites, queue, logger: false });
   await app.ready();
-  worker = createWorker({ config, sites, rules: loadRules('rules'), logger: { info() {}, error() {} } });
+  const record = (level) => (obj, msg) => events.push({ level, msg, at: Date.now(), ...obj });
+  worker = createWorker({ config, sites, rules: loadRules('rules'), logger: { info: record('info'), warn: record('warn'), error: record('error') } });
 });
 
 after(async () => {
@@ -225,4 +227,54 @@ test('une optimisation qui casse l’affichage est isolée et retirée', { skip,
   const payload = received.find((p) => p.url === `${fixture.url}/broken/`);
   assert.equal(payload.status, 'compiled_partial');
   assert.doesNotMatch(payload.html, /data-cw-delay/);
+});
+
+test('jamais deux compilations en même temps sur un même site', { skip, timeout: 400000 }, async () => {
+  const urls = [`${fixture.url}/?a=1`, `${fixture.url}/?b=2`, `${fixture.url}/?c=3`];
+  const ids = [];
+  for (const u of urls) {
+    const res = await app.inject(signedRequest('POST', '/v1/compile', { url: u }));
+    ids.push(res.json().jobId);
+  }
+  for (const id of ids) await waitForJob(id, 360000);
+  const spans = ids.map((id) => {
+    const start = events.find((e) => e.msg === 'compilation démarrée' && String(e.jobId) === String(id));
+    const end = events.find((e) => e.msg === 'compilation terminée' && String(e.jobId) === String(id));
+    return [start.at, end.at];
+  }).sort((a, b) => a[0] - b[0]);
+  for (let i = 1; i < spans.length; i += 1) {
+    assert.ok(spans[i][0] >= spans[i - 1][1], 'deux compilations du même site se chevauchent');
+  }
+});
+
+test('une compilation plantée (site injoignable) est signalée au plugin avec son motif', { skip, timeout: 120000 }, async () => {
+  const closed = await freePort();
+  const url = `http://localhost:${closed}/`;
+  const res = await app.inject(signedRequest('POST', '/v1/compile', { url }));
+  const job = await waitForJob(res.json().jobId);
+  assert.equal(job.state, 'failed');
+  const payload = received.find((p) => p.url === url);
+  assert.ok(payload, 'échec reçu par le plugin');
+  assert.equal(payload.status, 'failed');
+  assert.equal(payload.html, null);
+  assert.match(payload.reason, /injoignable|refusée/);
+});
+
+test('une page instable est détectée dès le contrôle de départ', { skip, timeout: 300000 }, async () => {
+  const res = await app.inject(signedRequest('POST', '/v1/compile', { url: `${fixture.url}/unstable/` }));
+  const job = await waitForJob(res.json().jobId);
+  assert.equal(job.result.status, 'failed');
+  const payload = received.find((p) => p.url === `${fixture.url}/unstable/`);
+  assert.match(payload.reason, /Page instable/);
+  assert.equal(payload.attempts.length, 1, 'aucune tentative d\'optimisation après un contrôle de départ en échec');
+  assert.equal(payload.attempts[0].attempt, 0);
+});
+
+test('une page en erreur 404 est signalée au plugin', { skip, timeout: 120000 }, async () => {
+  const res = await app.inject(signedRequest('POST', '/v1/compile', { url: `${fixture.url}/missing/` }));
+  const job = await waitForJob(res.json().jobId);
+  assert.equal(job.result.status, 'skipped');
+  const payload = received.find((p) => p.url === `${fixture.url}/missing/`);
+  assert.equal(payload.status, 'skipped');
+  assert.match(payload.reason, /404/);
 });

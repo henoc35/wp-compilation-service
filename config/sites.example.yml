@@ -1,12 +1,17 @@
 # Configuration des sites autorisés à demander des compilations.
 # Copier en config/sites.yml (ou coller le contenu dans la variable SITES_YAML).
-# Les secrets ne figurent jamais ici : « secret_env » donne le nom de la variable
-# d'environnement qui contient le secret partagé avec le plugin du site.
+# Secret partagé avec le plugin du site, au choix :
+#   secret: "..."          écrit directement ici (le plus simple sous Coolify :
+#                          SITES_YAML est déjà une variable secrète) ;
+#   secret_env: NOM        nom d'une variable d'environnement qui le contient
+#                          (à déclarer aussi dans docker-compose.yml).
+# « secret » l'emporte si les deux sont présents.
 
 sites:
   - id: site-27
     domains: [www.exemple.fr, exemple.fr]
-    secret_env: SECRET_SITE_27
+    secret: "remplacer-par-le-secret-du-site"
+    # ou : secret_env: SECRET_SITE_27
     # Point d'accès du plugin qui reçoit le résultat signé
     callback_url: https://www.exemple.fr/wp-json/page-compiler/v1/receive
 

@@ -92,6 +92,11 @@ export async function startFixtureSite() {
         trackerUrl,
         script: path === '/' ? 'tracker.js' : 'banner.js',
       }));
+    } else if (path === '/unstable/') {
+      // Contenu différent à chaque chargement (comme un agenda ou un flux) : hauteur variable.
+      const n = 2 + Math.floor(Math.random() * 30);
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.end(page({ title: 'Page instable', trackerUrl, script: 'tracker.js' }).replace('<p>Contenu de la page.</p>', '<p>Contenu de la page.</p>' + '<p>Ligne variable</p>'.repeat(n)));
     } else if (path.endsWith('frontend.css')) {
       res.setHeader('Content-Type', 'text/css');
       res.end(CSS);

@@ -56,3 +56,8 @@ test('médiane', () => {
   assert.equal(median([100, null, 300]), 200);
   assert.equal(median([]), null);
 });
+
+test('sites : secret écrit directement dans SITES_YAML', () => {
+  const sites = loadSites('/inexistant.yml', { SITES_YAML: '{"sites":[{"id":"site-01","domains":["www.exemple.fr"],"secret":"abc123","callback_url":"https://www.exemple.fr/wp-json/page-compiler/v1/receive"}]}' });
+  assert.equal(sites.get('site-01').secret, 'abc123');
+});

@@ -27,6 +27,16 @@ Chaque compilation ouvre un Chromium. La file applique une **concurrence globale
 
 Les demandes répétées pour une même page pendant `DEBOUNCE_MS` (30 s par défaut) sont fusionnées : enregistrer cinq fois une page ne lance qu'une compilation.
 
+**Une seule compilation à la fois par site.** Les 3 places servent à des sites différents : une page dont le site est déjà en cours de compilation repasse en attente (`SITE_RETRY_DELAY_MS`, 5 s par défaut) et laisse sa place à un autre site. Un site n'est donc jamais visité par plusieurs Chromium en même temps, ce qui évite de déclencher son pare-feu ou sa limite de requêtes (symptôme : `ERR_CONNECTION_REFUSED`). Le verrou est stocké dans Redis et expire de lui-même si un worker s'arrête brutalement.
+
+### Retour systématique au plugin
+
+Chaque demande reçoit une réponse signée du service, quel que soit son sort : page compilée, page ignorée (`skipped` : réponse HTTP 404, redirection hors du site…), échec de vérification ou compilation plantée (site injoignable, délai dépassé). Le motif est envoyé en clair dans `reason` et s'affiche dans WordPress ; aucune page ne reste « En cours ».
+
+### Contrôle de départ
+
+Avant toute optimisation, le service sert la page **telle quelle** par le même chemin que la version compilée et la compare à l'original (`BASELINE_CHECK`, activé par défaut). Si elles diffèrent déjà, la page est instable (contenu qui change à chaque chargement, cookie ou en-tête propre au site) : elle est déclarée en échec avec ce motif, sans essais inutiles. Désactiver ce contrôle n'est utile que pour diagnostiquer.
+
 ### Familles d'optimisation
 
 Chaque famille est indépendante, ce qui permet d'isoler celle qui casse.
@@ -160,7 +170,7 @@ Le plugin vérifie la signature, puis écrit le HTML de façon atomique (fichier
 
 ### Sites
 
-`config/sites.yml` (voir `config/sites.example.yml`), ou le même contenu dans la variable `SITES_YAML` (pratique sous Coolify). Chaque site déclare ses domaines, le **nom** de la variable d'environnement qui contient son secret, son `callback_url` et ses exceptions éventuelles.
+`config/sites.yml` (voir `config/sites.example.yml`), ou le même contenu dans la variable `SITES_YAML` (pratique sous Coolify). Chaque site déclare ses domaines, son secret, son `callback_url` et ses exceptions éventuelles. Le secret s'écrit soit directement (`secret`, le plus simple), soit par le nom d'une variable d'environnement (`secret_env`).
 
 ### Base de règles
 
@@ -184,6 +194,8 @@ Un problème corrigé dans une fiche l'est pour tous les sites qui utilisent cet
 | `MAX_ATTEMPTS` | `3` | Essais par page, isolation comprise |
 | `MEASURE_RUNS` | `3` | Mesures de LCP bridées (0 pour désactiver) |
 | `NOISE_CHECK` | `true` | Second rendu de l'original pour mesurer le bruit |
+| `BASELINE_CHECK` | `true` | Contrôle de départ : page sans optimisation comparée à l'original |
+| `SITE_RETRY_DELAY_MS` | `5000` | Attente d'une page dont le site est déjà en cours de compilation |
 | `VISUAL_THRESHOLD` | `0.005` | Écart toléré à l'ouverture (0,5 % des pixels) |
 | `FULLPAGE_THRESHOLD` | `0.01` | Écart toléré sur la page complète |
 | `HEIGHT_TOLERANCE` | `0.02` | Écart de hauteur toléré |
@@ -202,11 +214,11 @@ Le dépôt fournit un `Dockerfile` (image Playwright officielle, Chromium inclus
 En bref :
 
 1. Ressource Git, construction **Compose**, fichier `docker-compose.yml` à la racine.
-2. Variables : `ADMIN_TOKEN`, `SITES_YAML` (configuration des sites, au format JSON sur une ligne, qui est du YAML valide) et un `SECRET_SITE_xx` par site.
+2. Variables : `ADMIN_TOKEN` et `SITES_YAML` (configuration des sites avec leur secret, au format JSON sur une ligne, qui est du YAML valide).
 3. Domaine HTTPS sur le service `api`, avec le port interne : `https://compiler.exemple.fr:3000`.
 4. Déployer, puis vérifier `GET /health`.
 
-Ajout d'un site : ajouter `SECRET_SITE_xx` dans la section `environment` de `api` **et** de `worker` (commit), renseigner sa valeur dans Coolify, ajouter le site à `SITES_YAML`, redéployer.
+Ajout d'un site : ajouter le site, avec son `secret`, à `SITES_YAML`, puis redéployer. Aucune modification du dépôt n'est nécessaire. (Avec `secret_env`, il faut en plus déclarer la variable dans la section `environment` de `api` **et** de `worker`.)
 
 Dimensionnement indicatif : de l'ordre d'un cœur et 1 Go de mémoire par compilation simultanée. Avec `CHROMIUM_CONCURRENCY=3`, prévoir au moins 4 cœurs et 6 à 8 Go. Les mesures de LCP sont sensibles à la charge du serveur.
 
@@ -232,7 +244,7 @@ L'intégration continue GitHub Actions (`.github/workflows/ci.yml`) lance les de
 
 Le couple service + plugin a été testé sur un vrai WordPress (7.2 bêta, SQLite, PHP 8.3) : enregistrement d'une page → demande signée → compilation → retour signé → page servie avant WordPress (`X-Page-Compiler: HIT`), LCP 700 → 264 ms sur la page de test. Voir le README du plugin pour le détail des scénarios.
 
-## Limites de cette version (0.1)
+## Limites de cette version (0.2)
 
 - **Images** : pas encore de conversion WebP/AVIF ni de redimensionnement ; seuls les attributs de chargement sont optimisés. Prévu avec sharp (phase 2).
 - **Polices** : pas encore d'hébergement local des Google Fonts.
