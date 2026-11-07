@@ -97,6 +97,9 @@ if (isMain) {
   const config = loadConfig();
   const sites = loadSites(config.sitesFile);
   const rules = loadRules(config.rulesDir);
+  // Filet de sécurité : une erreur asynchrone imprévue est journalisée sans arrêter
+  // le worker (les compilations des autres sites continuent).
+  process.on('unhandledRejection', (err) => log.error({ err: String(err?.message || err).split('\n')[0] }, 'erreur asynchrone non gérée'));
   const worker = createWorker({ config, sites, rules });
   log.info({ concurrency: config.chromiumConcurrency, perSite: 1, sites: sites.size, rules: rules.addons.length }, 'worker démarré');
   for (const site of sites.values()) {

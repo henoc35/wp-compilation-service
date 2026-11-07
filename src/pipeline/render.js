@@ -21,8 +21,8 @@ function sameDocument(a, b) {
  */
 async function routeCandidate(context, url, html) {
   await context.route((u) => sameDocument(u.toString(), url), async (route) => {
-    if (route.request().resourceType() !== 'document') return route.continue();
-    return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: html });
+    if (route.request().resourceType() !== 'document') return route.continue().catch(() => {});
+    return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: html }).catch(() => {});
   });
 }
 
@@ -33,17 +33,23 @@ async function routeCandidate(context, url, html) {
  */
 async function routeBypass(context, url) {
   await context.route((u) => sameDocument(u.toString(), url), async (route) => {
-    if (route.request().resourceType() !== 'document') return route.continue();
-    return route.continue({ headers: { ...route.request().headers(), 'x-page-compiler-bypass': '1' } });
+    if (route.request().resourceType() !== 'document') return route.continue().catch(() => {});
+    return route.continue({ headers: { ...route.request().headers(), 'x-page-compiler-bypass': '1' } }).catch(() => {});
   });
 }
 
 /** Récupère le document d'origine (avec contournement du cache) et le sert par interception. */
 async function routeOriginalDocument(context, url) {
   await context.route((u) => sameDocument(u.toString(), url), async (route) => {
-    if (route.request().resourceType() !== 'document') return route.continue();
-    const response = await route.fetch({ headers: { ...route.request().headers(), 'x-page-compiler-bypass': '1' } });
-    return route.fulfill({ response });
+    if (route.request().resourceType() !== 'document') return route.continue().catch(() => {});
+    // Une erreur ici (site injoignable) ne doit jamais remonter hors du gestionnaire :
+    // elle ferait planter tout le worker. La navigation échoue alors normalement.
+    try {
+      const response = await route.fetch({ headers: { ...route.request().headers(), 'x-page-compiler-bypass': '1' } });
+      await route.fulfill({ response });
+    } catch {
+      await route.abort('connectionrefused').catch(() => {});
+    }
   });
 }
 
