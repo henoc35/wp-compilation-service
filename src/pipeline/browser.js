@@ -50,4 +50,20 @@ export const OBSERVER_SCRIPT = `(() => {
       }
     }).observe({ type: 'largest-contentful-paint', buffered: true });
   } catch (e) {}
+  // Gestionnaires « unload » : ils empêchent le cache avant/arrière du navigateur.
+  window.__cw.unload = 0;
+  try {
+    const add = EventTarget.prototype.addEventListener;
+    EventTarget.prototype.addEventListener = function (type, fn, opts) {
+      if (type === 'unload' && (this === window || this === document)) window.__cw.unload += 1;
+      return add.call(this, type, fn, opts);
+    };
+  } catch (e) {}
+  // CLS : somme des décalages de mise en page non provoqués par l'utilisateur.
+  window.__cw.cls = 0;
+  try {
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) if (!e.hadRecentInput) window.__cw.cls += e.value;
+    }).observe({ type: 'layout-shift', buffered: true });
+  } catch (e) {}
 })();`;

@@ -5,11 +5,20 @@ import { applyFonts } from './families/fonts.js';
 import { applyScripts } from './families/scripts.js';
 import { applyNavigation } from './families/navigation.js';
 import { applyCriticalCss } from './families/css.js';
+import { applyEmbeds } from './families/embeds.js';
+import { applyAssets } from './families/assets.js';
+import { applyResponsive } from './families/responsive.js';
 
+// Ordre d'application (le CSS critique est calculé en dernier, sur la page finale).
+// « responsive » passe avant « images » : le préchargement de l'image LCP reprend
+// alors son srcset (imagesrcset), sans téléchargement en double.
 const DOM_FAMILIES = {
+  responsive: applyResponsive,
   images: applyImages,
   animations: applyAnimations,
   fonts: applyFonts,
+  embeds: applyEmbeds,
+  assets: applyAssets,
   scripts: applyScripts,
   navigation: applyNavigation,
 };

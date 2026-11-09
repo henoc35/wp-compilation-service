@@ -8,6 +8,22 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: page_compiler_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://test:test@127.0.0.1:5432/page_compiler_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,6 +34,8 @@ jobs:
       - run: npm ci
       - name: Tests unitaires
         run: npm run test:unit
+      - name: Base de données et interface d'administration
+        run: npm run test:db
       - name: Tests de bout en bout (Chrome préinstallé sur le runner)
         run: npm run test:e2e
         env:

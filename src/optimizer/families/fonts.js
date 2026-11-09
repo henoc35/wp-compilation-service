@@ -1,3 +1,4 @@
+import { inlineLocalFonts } from '../fonts-local.js';
 /**
  * Famille « polices ».
  *
@@ -8,8 +9,11 @@
  * L'hébergement local des Google Fonts est prévu dans une version ultérieure.
  */
 
-export function applyFonts($) {
-  const notes = [];
+export function applyFonts($, ctx = {}) {
+  // Polices Google hébergées sur le site, si elles ont été préparées (voir fonts-local.js).
+  const notes = ctx.fontsLocal
+    ? inlineLocalFonts($, ctx.fontsLocal, { hosts: ctx.config?.fontsHosts, usedFontUrls: ctx.fontsUsed || [], assetsPath: ctx.assetsPath })
+    : [];
   let googleFonts = false;
 
   $('link[rel="stylesheet"][href*="fonts.googleapis.com/css"]').each((_, el) => {

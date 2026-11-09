@@ -13,6 +13,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY src ./src
+# Interface d'administration (/admin) et migrations de la base (dans src/store/migrations).
+COPY public ./public
 COPY rules ./rules
 COPY config/sites.example.yml ./config/sites.example.yml
 

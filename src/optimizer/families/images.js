@@ -43,7 +43,10 @@ function addPreload($, attrs, notes) {
     .some((el) => ($(el).attr('href') || $(el).attr('imagesrcset')) === key);
   if (exists) return;
   const link = $('<link>').attr({ rel: 'preload', as: 'image', fetchpriority: 'high', ...attrs });
-  const anchor = $('head meta[charset]').first();
+  // Après la balise viewport : un préchargement avec imagesrcset/imagesizes placé avant
+  // serait évalué sur la largeur par défaut (980 px) et téléchargerait une image trop grande.
+  const viewport = $('head meta[name="viewport"]').first();
+  const anchor = viewport.length ? viewport : $('head meta[charset]').first();
   if (anchor.length) anchor.after(link);
   else $('head').prepend(link);
   notes.push(`préchargement de ${key}`);

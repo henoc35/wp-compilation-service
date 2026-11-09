@@ -1,20 +1,41 @@
-import { capture, measureLcp, median } from '../pipeline/render.js';
+import { capture, measureVitals, median, medianFloat } from '../pipeline/render.js';
 import { compareScreenshots } from './visual.js';
 import { compareSeo } from './seo.js';
 
 /** Familles suspectes selon le type d'échec, de la plus probable à la moins probable. */
 export const SUSPECTS = {
   seo: ['navigation', 'css', 'scripts'],
-  visual_viewport: ['animations', 'images', 'css', 'fonts', 'scripts'],
+  visual_viewport: ['animations', 'images', 'responsive', 'assets', 'css', 'fonts', 'embeds', 'scripts'],
   // Différence à l'ouverture qui disparaît après défilement : ce qui manque au départ
   // arrive à la première interaction, signature typique d'un script retardé.
-  visual_viewport_only: ['scripts', 'animations', 'images', 'fonts', 'css'],
-  visual_full: ['css', 'images', 'animations', 'scripts', 'fonts'],
-  height: ['css', 'images', 'animations', 'scripts'],
-  interaction: ['scripts', 'css', 'animations'],
-  console: ['scripts', 'css', 'images'],
+  visual_viewport_only: ['scripts', 'assets', 'animations', 'images', 'responsive', 'fonts', 'css'],
+  visual_full: ['css', 'assets', 'images', 'responsive', 'embeds', 'animations', 'scripts', 'fonts'],
+  height: ['css', 'assets', 'responsive', 'images', 'embeds', 'animations', 'scripts'],
+  interaction: ['scripts', 'assets', 'css', 'animations'],
+  console: ['assets', 'scripts', 'embeds', 'fonts', 'responsive', 'css', 'images'],
   performance: ['scripts', 'css', 'navigation', 'fonts'],
+  // Décalages de mise en page : CSS chargé en différé, polices remplacées, images sans dimensions.
+  cls: ['css', 'fonts', 'responsive', 'images', 'animations', 'embeds', 'assets'],
 };
+
+/** Adresses reconnaissables dans une erreur : la famille qui les introduit passe en tête. */
+const ERROR_HINTS = [
+  [/ytimg\.com|youtube|vimeo|google\.[a-z.]+\/maps/i, 'embeds'],
+  [/page-compiler-assets|\.woff2/i, 'fonts'],
+  [/wp-json\/wp\/v2\/media|-\d+x\d+\.(jpe?g|png|webp|avif)/i, 'responsive'],
+];
+
+export function consoleSuspects(errors) {
+  const first = [];
+  for (const [re, family] of ERROR_HINTS) if (errors.some((e) => re.test(e)) && !first.includes(family)) first.push(family);
+  return [...first, ...SUSPECTS.console.filter((f) => !first.includes(f))];
+}
+
+/** Hausse de CLS tolérée : 0,02 ou 10 % de la valeur d'origine (bruit de mesure). */
+export function clsWorse(reference, candidate) {
+  if (reference == null || candidate == null) return false;
+  return candidate > reference + Math.max(0.02, reference * 0.1);
+}
 
 /** Normalise un message d'erreur pour comparer origine et candidate. */
 function normalizeError(msg) {
@@ -30,7 +51,7 @@ export function effectiveThreshold(base, noise) {
  * Vérifie une version candidate contre le rendu de référence.
  * Les contrôles sans navigateur passent d'abord (SEO), puis les rendus.
  */
-export async function verifyCandidate(browser, { url, rawHtml, candidateHtml, reference, noise, referenceLcp, config, masks, save }) {
+export async function verifyCandidate(browser, { url, rawHtml, candidateHtml, reference, noise, referenceLcp, referenceCls = null, config, masks, save }) {
   const failures = [];
   const metrics = { viewports: {} };
 
@@ -52,6 +73,7 @@ export async function verifyCandidate(browser, { url, rawHtml, candidateHtml, re
 
     const vpThreshold = effectiveThreshold(config.visualThreshold, noise?.[name]?.viewport);
     const fullThreshold = effectiveThreshold(config.fullPageThreshold, noise?.[name]?.full);
+    metrics.resources = { ...(metrics.resources || {}), [name]: cand.resources };
     metrics.viewports[name] = {
       viewportDiff: round(vp.ratio), viewportThreshold: round(vpThreshold),
       fullDiff: round(full.ratio), fullThreshold: round(fullThreshold),
@@ -86,15 +108,23 @@ export async function verifyCandidate(browser, { url, rawHtml, candidateHtml, re
     const known = new Set(ref.errors.map(normalizeError));
     const added = cand.errors.filter((e) => !known.has(normalizeError(e)));
     if (added.length) {
-      failures.push({ type: 'console', viewport: name, detail: added.slice(0, 3).join(' | '), suspects: SUSPECTS.console });
+      const suspects = consoleSuspects(added);
+      const hint = ERROR_HINTS.some(([re, f]) => f === suspects[0] && added.some((e) => re.test(e))) ? suspects[0] : null;
+      failures.push({ type: 'console', viewport: name, detail: added.slice(0, 3).join(' | '), suspects, hint });
     }
   }
 
   if (!failures.length && config.measureRuns > 0 && referenceLcp != null) {
-    const runs = [];
-    for (let i = 0; i < config.measureRuns; i += 1) runs.push(await measureLcp(browser, { url, candidateHtml, timeoutMs: config.pageTimeoutMs }));
+    const vitals = [];
+    for (let i = 0; i < config.measureRuns; i += 1) vitals.push(await measureVitals(browser, { url, candidateHtml, timeoutMs: config.pageTimeoutMs }));
+    const runs = vitals.map((v) => v.lcp);
     const candidateLcp = median(runs);
+    const candidateCls = medianFloat(vitals.map((v) => v.cls));
     metrics.lcp = { reference: referenceLcp, candidate: candidateLcp, runs };
+    metrics.cls = { reference: referenceCls, candidate: candidateCls };
+    if (clsWorse(referenceCls, candidateCls)) {
+      failures.push({ type: 'cls', detail: `CLS ${candidateCls} > ${referenceCls} (décalages de mise en page en hausse)`, suspects: SUSPECTS.cls });
+    }
     if (candidateLcp == null) {
       failures.push({ type: 'performance', detail: 'LCP de la version candidate non mesurable', suspects: SUSPECTS.performance });
     } else if (candidateLcp > referenceLcp * config.lcpTolerance) {

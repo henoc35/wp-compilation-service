@@ -1,11 +1,12 @@
 /**
  * Famille « navigation ».
  *
- * Ajoute des règles de spéculation (Speculation Rules) : le navigateur précharge
- * la page suivante au survol d'un lien. Par défaut en mode « prefetch » (le HTML
- * seulement, sans exécuter de script) ; le mode « prerender » (rendu complet en
- * arrière-plan) s'active par NAVIGATION_MODE=prerender, en connaissance de cause :
- * les scripts de statistiques s'exécutent alors aussi pour les pages préchargées.
+ * Ajoute des règles de spéculation (Speculation Rules) : le navigateur prépare la
+ * page suivante au survol d'un lien. Par défaut en « prerender » (rendu complet en
+ * arrière-plan : la page suivante s'affiche instantanément) ; « prefetch » (HTML
+ * seulement) par NAVIGATION_MODE=prefetch ou par site dans l'interface. Les outils
+ * de statistiques récents attendent l'affichage réel d'une page rendue d'avance
+ * avant de la compter ; les anciens scripts peuvent la compter dès le préchargement.
  */
 
 const DEFAULT_EXCLUDE = [

@@ -14,6 +14,10 @@ import { buildServer } from '../../src/api/server.js';
 import { createWorker } from '../../src/worker/start.js';
 import { loadRules } from '../../src/rules/index.js';
 import { signedHeaders, verify, HEADERS } from '../../src/signature.js';
+import pg from 'pg';
+import { openDatabase } from '../../src/store/db.js';
+import { createRepo } from '../../src/store/repo.js';
+import { createBox } from '../../src/store/security.js';
 
 /**
  * Test de bout en bout : Redis, API, worker, Chromium, faux site et faux plugin
@@ -41,6 +45,10 @@ let config;
 let queue;
 let app;
 let worker;
+// Historique en base : seulement si TEST_DATABASE_URL est fournie.
+const DB_URL = process.env.TEST_DATABASE_URL;
+let pool;
+let repo = null;
 
 async function freePort() {
   return new Promise((resolve) => {
@@ -146,12 +154,20 @@ before(async () => {
   app = buildServer({ config, sites, queue, logger: false });
   await app.ready();
   const record = (level) => (obj, msg) => events.push({ level, msg, at: Date.now(), ...obj });
-  worker = createWorker({ config, sites, rules: loadRules('rules'), logger: { info: record('info'), warn: record('warn'), error: record('error') } });
+  if (DB_URL) {
+    const admin = new pg.Pool({ connectionString: DB_URL });
+    await admin.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
+    await admin.end();
+    pool = await openDatabase(DB_URL);
+    repo = createRepo(pool, createBox('cle-de-test-suffisamment-longue'));
+  }
+  worker = createWorker({ config, sites, rules: loadRules('rules'), repo, logger: { info: record('info'), warn: record('warn'), error: record('error') } });
 });
 
 after(async () => {
   if (skip) return;
   await worker?.close();
+  await pool?.end();
   await app?.close();
   await queue?.obliterate({ force: true }).catch(() => {});
   await queue?.close();
@@ -222,6 +238,7 @@ test('une optimisation qui casse l’affichage est isolée et retirée', { skip,
   const res = await app.inject(signedRequest('POST', '/v1/compile', { url: `${fixture.url}/broken/` }));
   const job = await waitForJob(res.json().jobId);
   assert.equal(job.state, 'completed');
+  assert.ok(job.result, `résultat absent : ${JSON.stringify(job)}`);
   assert.equal(job.result.status, 'compiled_partial');
   assert.deepEqual(job.result.familiesDisabled, ['scripts']);
   const payload = received.find((p) => p.url === `${fixture.url}/broken/`);
@@ -289,4 +306,28 @@ test('une page en erreur 404 est signalée au plugin', { skip, timeout: 120000 }
   const payload = received.find((p) => p.url === `${fixture.url}/missing/`);
   assert.equal(payload.status, 'skipped');
   assert.match(payload.reason, /404/);
+});
+
+test('historique en base : poids par catégorie, fichiers et échecs enregistrés', { skip: skip || (!DB_URL && 'TEST_DATABASE_URL absente'), timeout: 30000 }, async () => {
+  const rows = await repo.compilations.list('site-test', { limit: 100 });
+  assert.ok(rows.length >= 3, 'chaque compilation est enregistrée');
+  const compiled = rows.find((r) => r.status === 'compiled' || r.status === 'compiled_partial');
+  assert.ok(compiled, 'une compilation réussie');
+  const detail = await repo.compilations.get('site-test', compiled.id);
+  const ref = detail.weights.reference.mobile;
+  assert.ok(ref.total > 0 && ref.html > 0 && ref.css > 0 && ref.js > 0 && ref.images > 0, 'poids par catégorie');
+  assert.ok(ref.initial > 0 && ref.initial <= ref.total);
+  assert.ok(detail.weights.compiled?.mobile?.total > 0, 'poids de la version compilée');
+  const images = detail.resources.reference.mobile.filter((r) => r.type === 'image');
+  assert.ok(images.length >= 1 && images.every((r) => r.bytes > 0 && r.url.startsWith('http')), 'détail des images');
+  assert.ok(detail.lcp_reference > 0);
+  // Diagnostic : couverture CSS/JS et images mesurées sur la page d'origine.
+  const diag = detail.diagnostics;
+  assert.ok(diag, 'diagnostic enregistré');
+  assert.ok(diag.files.some((f) => f.type === 'css' && f.total > 0 && f.unusedRatio >= 0 && f.unusedRatio <= 1), 'couverture CSS');
+  assert.ok(diag.files.some((f) => f.type === 'js' && f.total > 0), 'couverture JS');
+  assert.ok(diag.images.length >= 1 && diag.images.every((i) => i.natural[0] > 0 && i.needed > 0), 'images mesurées');
+  assert.equal(detail.weights.diagnostics.cssTotal, diag.summary.cssTotal, 'résumé gardé 2 ans dans weights');
+  const failed = rows.find((r) => r.status === 'failed' && /injoignable|Page instable|Contrôle de départ|Erreur du service/.test(r.reason || ''));
+  assert.ok(failed, 'les échecs sont enregistrés avec leur motif');
 });

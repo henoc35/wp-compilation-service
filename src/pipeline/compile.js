@@ -1,5 +1,10 @@
 import { launchBrowser } from './browser.js';
-import { capture, measureLcp, median } from './render.js';
+import { capture, measureVitals, median, medianFloat, summarizeResources } from './render.js';
+import { mergeCoverage, analyze } from './diagnostics.js';
+import * as cheerio from 'cheerio';
+import { prepareResponsive } from '../optimizer/families/responsive.js';
+import { prepareFonts } from '../optimizer/fonts-local.js';
+import { rumScript } from '../rum.js';
 import { optimize } from '../optimizer/index.js';
 import { verifyCandidate } from '../verify/index.js';
 import { compareScreenshots } from '../verify/visual.js';
@@ -13,13 +18,28 @@ const pct = (x) => `${(x * 100).toFixed(1)} %`;
 export function describeFailure(f) {
   const labels = {
     visual_viewport: "écart à l'ouverture", visual_viewport_only: "écart à l'ouverture", visual_full: 'écart sur la page complète',
-    height: 'hauteur', interaction: 'interaction', console: 'erreur JavaScript', seo: 'SEO', performance: 'LCP',
+    height: 'hauteur', interaction: 'interaction', console: 'erreur JavaScript', seo: 'SEO', performance: 'LCP', cls: 'CLS',
   };
   return `${labels[f.type] || f.type}${f.viewport ? ` (${f.viewport})` : ''} : ${f.detail || ''}`.trim();
 }
 
 export function describeFailures(failures) {
   return failures.map(describeFailure).join(' ; ');
+}
+
+/**
+ * Chemin public du dossier des fichiers déposés sur le site (polices locales), d'après
+ * l'adresse donnée par le plugin ; uniquement sur le même domaine que la page.
+ */
+export function assetsPathFor(assetsUrl, pageUrl) {
+  if (!assetsUrl) return null;
+  try {
+    const a = new URL(assetsUrl);
+    if (a.hostname !== new URL(pageUrl).hostname) return null;
+    return a.pathname.endsWith('/') ? a.pathname : `${a.pathname}/`;
+  } catch {
+    return null;
+  }
 }
 
 /** Familles qui ont réellement modifié la page (les autres ne peuvent rien casser). */
@@ -104,10 +124,33 @@ async function compileCore({ job, site, config, rules, store, progress, log }) {
     const reference = {};
     for (const name of ['mobile', 'desktop']) {
       reference[name] = await capture(browser, {
-        url: job.url, viewportName: name, masks, collectReference: true, timeoutMs: config.pageTimeoutMs,
+        url: job.url, viewportName: name, masks, collectReference: true, diagnose: config.diagnostics !== false, timeoutMs: config.pageTimeoutMs,
       });
       await store.save(`${name}-reference-viewport.png`, reference[name].screenshots.viewport);
       await store.save(`${name}-reference-full.png`, reference[name].screenshots.full);
+    }
+    result.resources = { reference: { mobile: reference.mobile.resources, desktop: reference.desktop.resources } };
+    result.weights = { reference: { mobile: summarizeResources(reference.mobile.resources), desktop: summarizeResources(reference.desktop.resources) } };
+    if (reference.mobile.diagnostics) {
+      try {
+        const coverage = mergeCoverage(['mobile', 'desktop'].flatMap((n) => [
+          { type: 'js', entries: reference[n].diagnostics?.coverage?.js || [] },
+          { type: 'css', entries: reference[n].diagnostics?.coverage?.css || [] },
+        ]));
+        result.diagnostics = analyze({
+          images: { mobile: reference.mobile.diagnostics.images, desktop: reference.desktop.diagnostics?.images },
+          coverage,
+          resources: [...(reference.mobile.resources || []), ...(reference.desktop.resources || [])],
+          lcpUrl: reference.mobile.lcp?.url || null,
+        });
+        result.diagnostics.bfcache = reference.mobile.diagnostics.bfcache;
+        result.diagnostics.summary.bfcache = reference.mobile.diagnostics.bfcache?.eligible ?? null;
+        result.weights.diagnostics = result.diagnostics.summary;
+      } catch (err) {
+        log.warn?.({ err: err.message }, 'diagnostic impossible');
+      }
+      // Les relevés bruts (sources complètes) ne sont pas conservés.
+      for (const n of ['mobile', 'desktop']) if (reference[n]) reference[n].diagnostics = null;
     }
     const rawHtml = reference.mobile.rawHtml;
     const url = reference.mobile.finalUrl || job.url;
@@ -156,17 +199,22 @@ async function compileCore({ job, site, config, rules, store, progress, log }) {
 
     // 3. LCP de référence en conditions bridées
     let referenceLcp = null;
+    let referenceCls = null;
     if (config.measureRuns > 0) {
       await progress({ step: 'measure-reference' });
-      const runs = [];
-      for (let i = 0; i < config.measureRuns; i += 1) runs.push(await measureLcp(browser, { url, timeoutMs: config.pageTimeoutMs }));
+      const vitals = [];
+      for (let i = 0; i < config.measureRuns; i += 1) vitals.push(await measureVitals(browser, { url, timeoutMs: config.pageTimeoutMs }));
+      const runs = vitals.map((v) => v.lcp);
       referenceLcp = median(runs);
+      referenceCls = medianFloat(vitals.map((v) => v.cls));
       result.lcp = { reference: referenceLcp, referenceRuns: runs, candidate: null };
+      result.cls = { reference: referenceCls, candidate: null };
     }
 
     const ctx = {
       url,
-      config,
+      // Réglage par site (interface) prioritaire sur la variable NAVIGATION_MODE.
+      config: site?.options?.navigation_mode ? { ...config, navigationMode: site.options.navigation_mode } : config,
       rules: pageRules,
       cssCache: new Map(),
       reference: {
@@ -179,13 +227,31 @@ async function compileCore({ job, site, config, rules, store, progress, log }) {
 
     // 4. Optimisation et vérification, avec isolation de la famille fautive
     const families = enabledFamilies(site, job.families);
+
+    // Préparations réseau des familles qui en ont besoin (faites une seule fois).
+    // Par adresse chargée et par attribut src (le navigateur a pu choisir une autre taille dans le srcset).
+    ctx.imageInfo = new Map();
+    for (const i of result.diagnostics?.images || []) {
+      const info = { natural: i.natural, display: i.display };
+      ctx.imageInfo.set(i.url, info);
+      if (i.src && !ctx.imageInfo.has(i.src)) ctx.imageInfo.set(i.src, info);
+    }
+    if (families.includes('responsive')) {
+      ctx.media = await prepareResponsive(rawHtml, { url, timeoutMs: Math.min(config.pageTimeoutMs, 10000) });
+    }
+    const assetsPath = assetsPathFor(job.assetsUrl, url);
+    if (families.includes('fonts') && assetsPath) {
+      ctx.assetsPath = assetsPath;
+      ctx.fontsLocal = await prepareFonts(cheerio.load(rawHtml), { assetsPath, hosts: config.fontsHosts });
+      ctx.fontsUsed = (reference.mobile.resources || []).filter((r) => r.type === 'font' && r.initial).map((r) => r.url);
+    }
     const runAttempt = async (attempt, active, cfg = config) => {
       await progress({ step: 'attempt', attempt, families: active });
       const save = store.scope(`attempt-${attempt}`);
       const optimized = await optimize(rawHtml, ctx, active);
       await save('candidate.html', optimized.html);
       const verdict = await verifyCandidate(browser, {
-        url, rawHtml, candidateHtml: optimized.html, reference, noise, referenceLcp, config: cfg, masks, save,
+        url, rawHtml, candidateHtml: optimized.html, reference, noise, referenceLcp, referenceCls, config: cfg, masks, save,
       });
       result.attempts.push({
         attempt, families: active, notes: optimized.notes, ok: verdict.ok,
@@ -221,6 +287,21 @@ async function compileCore({ job, site, config, rules, store, progress, log }) {
       // peut y avoir plusieurs fautives, on ne les réactive pas).
       let base = [];
       let attempt = 2;
+      // Famille désignée par l'erreur elle-même (adresse reconnue) : essayée seule d'abord.
+      const hint = first.verdict.failures.map((f) => f.hint).find((h) => h && candidates.includes(h));
+      if (hint && config.maxAttempts >= 2) {
+        const active = families.filter((f) => f !== hint);
+        const run = await runAttempt(attempt, active);
+        attempt += 1;
+        if (run.verdict.ok) {
+          keep(active, [hint], run);
+          candidates = [];
+        } else {
+          // La famille désignée reste désactivée ; la suite repart des écarts restants.
+          base = [hint];
+          candidates = rankSuspects(run.verdict.failures, active, changedFamilies(run.optimized.notes));
+        }
+      }
       while (attempt <= config.maxAttempts && candidates.length) {
         const half = candidates.slice(0, Math.ceil(candidates.length / 2));
         const rest = candidates.slice(half.length);
@@ -247,7 +328,21 @@ async function compileCore({ job, site, config, rules, store, progress, log }) {
       if (best.verdict.metrics.lcp) {
         result.lcp = { ...result.lcp, candidate: best.verdict.metrics.lcp.candidate, candidateRuns: best.verdict.metrics.lcp.runs };
       }
+      if (best.verdict.metrics.cls) result.cls = { ...result.cls, candidate: best.verdict.metrics.cls.candidate };
+      // Mesure des visiteurs (option du site) : script passif ajouté à la page publiée.
+      if (site?.options?.rum && config.publicUrl && !result.html.includes('data-pc-rum')) {
+        result.html = result.html.replace(/<\/body>/i, `${rumScript(`${config.publicUrl}/v1/rum/${encodeURIComponent(site.id)}`)}</body>`);
+      }
+      // Fichiers à déposer sur le site avec la page (polices locales).
+      if (best.active.includes('fonts') && ctx.fontsLocal?.files?.size && best.optimized.html.includes('data-pc-fonts')) {
+        result.assets = [...ctx.fontsLocal.files.values()].map(({ path, data, contentType }) => ({ path, content_type: contentType, data }));
+      }
       result.html = best.optimized.html;
+      const compiled = best.verdict.metrics.resources;
+      if (compiled?.mobile) {
+        result.resources.compiled = compiled;
+        result.weights.compiled = { mobile: summarizeResources(compiled.mobile), desktop: summarizeResources(compiled.desktop || []) };
+      }
     } else {
       const last = result.attempts[result.attempts.length - 1];
       result.reason = `Aucune version identique à l'original trouvée${last ? ` (dernier essai : ${describeFailures(last.failures)})` : ''}.`;
@@ -270,17 +365,18 @@ export async function runCompilation({ job, site, config, rules, store, progress
 
   if (publish && site) {
     await progress({ step: 'publish' });
-    const { html, ...summary } = result;
+    const { html, resources, diagnostics, assets, ...summary } = result;
     const ok = result.status === 'compiled' || result.status === 'compiled_partial';
     result.published = await publishResult(site, {
       ...summary,
       attempts: summary.attempts.map(({ attempt, families, ok: passed, failures }) => ({ attempt, families, ok: passed, failures })),
       html: ok ? html : null,
+      assets: ok && assets?.length ? assets : undefined,
       compiledAt: new Date().toISOString(),
     }, { timeoutMs: config.callbackTimeoutMs });
   }
 
-  const { html, ...report } = result;
+  const { html, assets, ...report } = result;
   await store.save('report.json', JSON.stringify(report, null, 2));
   return result;
 }

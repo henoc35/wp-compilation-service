@@ -22,7 +22,7 @@ function bool(name, fallback) {
 }
 
 /** Ensemble des familles d'optimisation, dans l'ordre d'application. */
-export const ALL_FAMILIES = ['images', 'animations', 'fonts', 'scripts', 'navigation', 'css'];
+export const ALL_FAMILIES = ['images', 'responsive', 'animations', 'fonts', 'embeds', 'assets', 'scripts', 'navigation', 'css'];
 
 export function loadConfig() {
   return {
@@ -43,7 +43,8 @@ export function loadConfig() {
     chromiumPath: env.CHROMIUM_PATH || undefined,
     /** Arguments Chromium supplémentaires, séparés par des espaces (utile en test local). */
     chromiumExtraArgs: (env.CHROMIUM_EXTRA_ARGS || '').split(/\s+/).filter(Boolean),
-    maxAttempts: int('MAX_ATTEMPTS', 3),
+    /** Essais par page (isolation de la famille fautive parmi 9). */
+    maxAttempts: int('MAX_ATTEMPTS', 4),
     visualThreshold: float('VISUAL_THRESHOLD', 0.005),
     fullPageThreshold: float('FULLPAGE_THRESHOLD', 0.01),
     heightTolerance: float('HEIGHT_TOLERANCE', 0.02),
@@ -53,9 +54,31 @@ export function loadConfig() {
     measureRuns: int('MEASURE_RUNS', 3),
     lcpTolerance: float('LCP_TOLERANCE', 1.05),
     signatureMaxAgeSeconds: int('SIGNATURE_MAX_AGE', 300),
-    navigationMode: env.NAVIGATION_MODE === 'prerender' ? 'prerender' : 'prefetch',
+    /** Préchargement des pages suivantes : rendu anticipé (défaut) ou HTML seul ; réglable par site. */
+    navigationMode: env.NAVIGATION_MODE === 'prefetch' ? 'prefetch' : 'prerender',
     pageTimeoutMs: int('PAGE_TIMEOUT_MS', 60000),
     callbackTimeoutMs: int('CALLBACK_TIMEOUT_MS', 30000),
+    /** Base PostgreSQL : comptes, clients, sites, historique, PageSpeed. */
+    databaseUrl: env.DATABASE_URL || '',
+    /** Clé de chiffrement des secrets des sites et de la clé PageSpeed en base. */
+    masterKey: env.MASTER_KEY || '',
+    /** Premier compte administrateur, créé au démarrage si aucun compte n'existe. */
+    adminEmail: env.ADMIN_EMAIL || '',
+    adminPassword: env.ADMIN_PASSWORD || '',
+    sessionTtlHours: int('SESSION_TTL_HOURS', 12),
+    /** Clé de l'API PageSpeed Insights (sinon celle saisie dans l'interface). */
+    pagespeedApiKey: env.PAGESPEED_API_KEY || '',
+    pagespeedEndpoint: env.PAGESPEED_ENDPOINT || 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed',
+    pairingTtlMinutes: int('PAIRING_TTL_MINUTES', 15),
+    /** Adresse publique du service (ex. https://compiler.exemple.fr) : nécessaire à la mesure des visiteurs. */
+    publicUrl: (env.PUBLIC_URL || '').replace(/\/+$/, ''),
+    cruxEndpoint: env.CRUX_ENDPOINT || 'https://chromeuxreport.googleapis.com/v1/records:queryHistoryRecord',
+    /** Diagnostic CSS/JS/images pendant le rendu de référence (historique). */
+    diagnostics: bool('DIAGNOSTICS', true),
+    /** Hôtes des feuilles Google Fonts hébergées localement (famille « fonts »). */
+    fontsHosts: (env.FONTS_HOSTS || 'fonts.googleapis.com').split(',').map((s) => s.trim()).filter(Boolean),
+    /** Derrière un proxy (Coolify) : IP et protocole réels lus dans X-Forwarded-*. */
+    trustProxy: bool('TRUST_PROXY', true),
   };
 }
 

@@ -4,3 +4,5 @@ sortie/
 .env
 config/sites.yml
 *.log
+dump.rdb
+scripts-demo.mjs

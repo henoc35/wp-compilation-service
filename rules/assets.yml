@@ -1,0 +1,23 @@
+# Fichiers CSS et JS retirés des pages qui ne s'en servent pas (famille « assets »).
+# match   : morceaux d'URL (ou /expression/) des fichiers concernés
+# keep_if : sélecteurs CSS ; si l'un est présent dans la page, rien n'est retiré
+# inline  : morceaux de scripts ou styles en ligne à retirer avec les fichiers
+# Chaque retrait passe ensuite par la vérification habituelle (affichage, menu,
+# slider, erreurs JavaScript) : en cas d'écart, la famille est désactivée.
+assets:
+  - name: Contact Form 7
+    match: ["/wp-content/plugins/contact-form-7/"]
+    keep_if: [".wpcf7", "form.wpcf7-form"]
+  - name: Emojis WordPress
+    match: ["wp-emoji-release.min.js", "/wp-includes/js/wp-emoji"]
+    inline: ["_wpemojiSettings", "wp-emoji-release", "img.wp-smiley"]
+    keep_if: ["img.emoji", "img.wp-smiley"]
+  - name: Styles des blocs Gutenberg
+    match: ["/wp-includes/css/dist/block-library/", "/wp-includes/css/classic-themes"]
+    keep_if: ["[class*='wp-block']"]
+  - name: Dashicons
+    match: ["/wp-includes/css/dashicons"]
+    keep_if: [".dashicons", "[class*='dashicons-']"]
+  - name: WooCommerce hors boutique
+    match: ["/wp-content/plugins/woocommerce/assets/", "/wp-content/plugins/woocommerce/packages/"]
+    keep_if: [".woocommerce", ".product", "[class*='wc-block']", ".widget_shopping_cart", ".elementor-menu-cart__wrapper", ".cart-contents", "form.cart", ".add_to_cart_button"]

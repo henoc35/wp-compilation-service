@@ -19,6 +19,8 @@ export function loadRules(dir) {
   const masksFile = path.join(dir, 'masks.yml');
   const thirdParty = fs.existsSync(thirdPartyFile) ? readYaml(thirdPartyFile) : {};
   const masks = fs.existsSync(masksFile) ? readYaml(masksFile).masks || [] : [];
+  const assetsFile = path.join(dir, 'assets.yml');
+  const conditionalAssets = fs.existsSync(assetsFile) ? readYaml(assetsFile).assets || [] : [];
   return {
     addons,
     thirdParty: {
@@ -27,6 +29,7 @@ export function loadRules(dir) {
       inlineSignatures: thirdParty.inline_signatures || [],
     },
     masks,
+    conditionalAssets,
   };
 }
 
@@ -58,5 +61,6 @@ export function resolveRules(rules, html, site) {
       inlineSignatures: rules.thirdParty.inlineSignatures,
     },
     navigationExclude: site?.navigationExclude || [],
+    conditionalAssets: rules.conditionalAssets || [],
   };
 }

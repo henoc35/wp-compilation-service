@@ -1,6 +1,6 @@
 {
   "name": "page-compiler-service",
-  "version": "0.2.2",
+  "version": "0.4.0",
   "private": true,
   "description": "Service de compilation : rend, optimise et vérifie les pages WordPress/Elementor avant de les renvoyer au site.",
   "type": "module",
@@ -13,7 +13,8 @@
     "compile": "node src/cli.js",
     "test": "node --test --test-concurrency=1 \"test/**/*.test.js\"",
     "test:unit": "node --test \"test/unit/*.test.js\"",
-    "test:e2e": "node --test \"test/e2e/*.test.js\""
+    "test:e2e": "node --test \"test/e2e/*.test.js\"",
+    "test:db": "node --test --test-concurrency=1 \"test/db/*.test.js\""
   },
   "dependencies": {
     "beasties": "^0.5.5",
@@ -21,6 +22,7 @@
     "cheerio": "^1.2.0",
     "fastify": "^5.12.8",
     "ioredis": "^6.0.0",
+    "pg": "^8.23.1",
     "pino": "^10.4.0",
     "pixelmatch": "^8.0.0",
     "playwright-core": "1.65.0",

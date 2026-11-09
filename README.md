@@ -49,11 +49,16 @@ Chaque famille est indépendante, ce qui permet d'isoler celle qui casse.
 | Famille | Ce qu'elle fait |
 | --- | --- |
 | `images` | Image LCP mesurée (mobile et desktop) préchargée en priorité haute et sortie du lazy-load, y compris une image de fond (classe `e-no-lazyload` d'Elementor) ; autres images en lazy-load natif |
+| `responsive` | Images de la médiathèque (`wp-image-ID`) : `srcset` construit avec les tailles **déjà générées** par WordPress (API REST publique `wp/v2/media`), `sizes` calculé d'après la largeur réellement affichée ; `aspect-ratio` ajouté aux images sans dimensions (espace réservé, moins de CLS). Aucune image créée ni stockée |
 | `animations` | Animations d'entrée Elementor retirées sur les éléments visibles à l'ouverture ; conservées plus bas |
-| `fonts` | Google Fonts en `display=swap`, connexion anticipée, `font-display: swap` sur les `@font-face` en ligne |
+| `fonts` | Google Fonts **hébergées sur le site** (jeux latin et latin-ext, envoyés au plugin avec la page ; autres jeux laissés chez Google), polices utilisées à l'ouverture préchargées ; `font-display: swap` partout |
+| `embeds` | Vidéos YouTube et Vimeo, cartes Google Maps **chargées au clic** : l'iframe reste en place (mêmes dimensions et CSS), son contenu est remplacé par une vignette légère (`srcdoc`) |
+| `assets` | Fichiers CSS/JS d'une extension retirés des pages qui ne l'utilisent pas, selon `rules/assets.yml` : Contact Form 7, emojis WordPress, styles des blocs Gutenberg, Dashicons, WooCommerce hors boutique |
 | `scripts` | Scripts tiers (statistiques, pixels) retardés jusqu'à la première interaction ; scripts Elementor, jQuery, sliders et menus jamais touchés |
-| `navigation` | Règles de spéculation : préchargement de la page suivante au survol d'un lien (`prefetch` par défaut) |
+| `navigation` | Règles de spéculation : **rendu anticipé** (`prerender`) de la page suivante au survol d'un lien, la page s'affiche instantanément ; `prefetch` (HTML seul) réglable par site ou par `NAVIGATION_MODE` |
 | `css` | CSS critique intégré à la page (Beasties), feuilles complètes chargées en asynchrone, **aucune règle supprimée**, sélecteurs protégés par addon |
+
+Chaque famille peut être désactivée par site dans l'interface (*Réglages du site*).
 
 ### Vérification
 
@@ -64,7 +69,8 @@ Comparée à la page d'origine, en mobile (Pixel 7) et en desktop (1440 px) :
 - menu mobile et sliders : s'ils fonctionnent sur l'original, ils doivent fonctionner sur la candidate ;
 - aucune nouvelle erreur JavaScript en console ;
 - parité SEO : title, meta description, robots, canonical, hreflang, Open Graph, JSON-LD, H1 ;
-- LCP en conditions bridées (CPU ×4, réseau 4G lente, cache vide), médiane de `MEASURE_RUNS` mesures : pas plus lent que l'original (tolérance `LCP_TOLERANCE`).
+- LCP en conditions bridées (CPU ×4, réseau 4G lente, cache vide), médiane de `MEASURE_RUNS` mesures : pas plus lent que l'original (tolérance `LCP_TOLERANCE`) ;
+- CLS (décalages de mise en page) dans les mêmes conditions : pas de hausse au-delà de 0,02 ou 10 % de la valeur d'origine.
 
 La version candidate est servie au navigateur **à l'adresse réelle de la page** par interception de la requête du document : elle est testée dans les conditions exactes du site sans jamais être publiée avant d'avoir réussi.
 
@@ -75,9 +81,66 @@ En cas d'échec, les familles suspectes sont classées selon le type d'échec et
 - si la page passe, la fautive est dans la moitié désactivée : on teste une moitié plus petite pour en garder le plus possible ;
 - sinon, la fautive est dans l'autre moitié.
 
-La meilleure version vérifiée est publiée (`compiled_partial`, avec la liste des familles désactivées). Après `MAX_ATTEMPTS` essais (3 par défaut) sans version valide, le résultat est `failed` : le plugin continue de servir la page WordPress.
+Quand une erreur désigne elle-même une famille (adresse d'une vignette YouTube, d'une police déposée, d'une taille d'image), cette famille est essayée seule en premier. La meilleure version vérifiée est publiée (`compiled_partial`, avec la liste des familles désactivées). Après `MAX_ATTEMPTS` essais (4 par défaut) sans version valide, le résultat est `failed` : le plugin continue de servir la page WordPress.
 
 Un indice oriente le classement : une différence visible à l'ouverture qui disparaît après défilement désigne d'abord les scripts retardés (ce qui manque arrive à la première interaction).
+
+## Interface d'administration
+
+Le service sert une interface web sur **`/admin`** (même domaine que l'API) :
+
+- **Sites**, regroupés par **client** : état d'appairage, compilations des 30 derniers jours, derniers scores PageSpeed.
+- **Nouveau site** : nom, client, domaines. L'identifiant (`site-01`, `site-02`…) et la clé sont créés automatiquement ; un **code d'appairage** à usage unique (15 min) s'affiche.
+- **Fiche site** :
+  - *Pages* : dernier résultat de chaque page, LCP avant → après, poids à l'ouverture et poids total ; boutons Recompiler et PageSpeed.
+  - *Historique* : chaque compilation, avec ses essais et écarts, le **poids de la page par catégorie** (HTML, CSS, JS, images, polices) avant et après compilation, la **liste des fichiers** (images, CSS, JS, polices) avec leur poids, et les **captures** (référence, version compilée, différences).
+  - *PageSpeed* : analyses à la demande (mobile + ordinateur) : score, FCP, LCP, CLS, TBT, et données réelles (CrUX) si le site a assez de trafic ; lien vers PageSpeed Insights.
+  - *Appairage* : nouveau code, changement de clé (le site doit être réappairé), affichage de la clé pour une configuration manuelle (mot de passe demandé, action journalisée).
+  - *Réglages du site* : nom, client, domaines, adresse de réception, mise en pause.
+- **Réglages** : clé PageSpeed (chiffrée en base), import des sites de `SITES_YAML`.
+- **Journal** : qui a fait quoi (connexions, créations, appairages, changements de clé…).
+
+### Comptes
+
+Un compte administrateur est créé au premier démarrage à partir de `ADMIN_EMAIL` et `ADMIN_PASSWORD`. Le modèle prévoit déjà plusieurs comptes : rôles `admin`, `editor`, `viewer` et rattachement d'un compte à certains clients (table `user_clients`) ; un compte non administrateur ne voit que les sites de ses clients. L'écran de gestion des comptes viendra avec l'ouverture à l'équipe.
+
+Sécurité : mots de passe hachés (scrypt), session par cookie `HttpOnly` + `SameSite=Strict` (+ `Secure` derrière HTTPS), jeton anti-CSRF sur toute modification, 10 essais de connexion par 15 min et par IP, en-têtes CSP stricts, aucune donnée affichée interprétée comme HTML.
+
+### Appairage d'un site
+
+1. Dans l'interface : **Nouveau site** → le code s'affiche.
+2. Dans WordPress : *Réglages › Page Compiler*, section « Associer ce site au service » : adresse du service + code → « Associer ».
+3. Le plugin reçoit l'identifiant et la clé ; le service enregistre l'adresse de réception et la version du plugin. Le domaine de WordPress doit faire partie des domaines déclarés.
+
+Le code est à usage unique (une tentative avec un mauvais domaine le consomme) et limité à 20 essais par 15 min et par IP.
+
+### PageSpeed
+
+Analyses lancées **uniquement à la demande**, depuis l'interface ou depuis WordPress (API v5 `runPagespeed`, `strategy=MOBILE|DESKTOP`, catégorie performance). Il faut une clé d'API Google : voir la page « Get started » de la [documentation PageSpeed Insights API](https://developers.google.com/speed/docs/insights/v5/get-started). Google prévoit de retirer les données réelles (CrUX) de cette API : elles s'affichent tant qu'elles sont fournies. Le lien « PageSpeed Insights ↗ » est un lien de commodité qui relance une analyse sur le site de Google.
+
+### Diagnostic CSS, JS et images
+
+À chaque compilation, le rendu de référence (mobile et ordinateur, défilement, menu et slider compris) mesure :
+
+- la **part utilisée de chaque fichier CSS et JS** (couverture de code de Chromium) ;
+- chaque **image** : taille réelle, taille affichée, largeur utile (largeur affichée × densité d'écran : 2,6 sur mobile, 1 sur ordinateur), excès et **gain estimé** (au prorata des pixels en trop, à format égal), présence d'un `srcset`, image LCP ;
+- les **doublons** (plusieurs fichiers pour la même image de la médiathèque) ;
+- ce qui désactive le **cache avant/arrière** du navigateur (`Cache-Control: no-store`, gestionnaires `unload`).
+
+Interface : onglet *Diagnostic* du site (agrégé sur la dernière compilation de chaque page ; « inutilisé partout » = part inutilisée même sur la page qui en utilise le plus, candidat au retrait) et section *Diagnostic* de chaque compilation.
+
+### Visiteurs réels
+
+- **CrUX** (onglet *Visiteurs réels*, bouton *Actualiser*) : API CrUX History de Google, 75e centile LCP, INP, CLS, FCP, TTFB sur le site entier, mobile et ordinateur, 25 périodes de 28 jours, avec courbe d'évolution. Même clé d'API que PageSpeed ; l'API « Chrome UX Report » doit être autorisée pour cette clé. Les petits sites n'ont souvent pas assez de trafic pour que Google publie des données.
+- **Mesure des visiteurs** (option par site, désactivée par défaut) : un petit script ajouté aux pages compilées envoie LCP, CLS, INP et TTFB au service à la fermeture de la page (`POST /v1/rum/:site`, `sendBeacon`). Ni cookie, ni identifiant ; le service n'enregistre ni l'IP ni l'adresse complète (chemin seulement) ; mesures acceptées uniquement depuis les domaines du site ; conservées 90 jours. Nécessite `PUBLIC_URL`. **À valider avec la politique de confidentialité du client avant activation.**
+
+### Base de données
+
+PostgreSQL, partagé par l'API et le worker. Le schéma évolue par **migrations SQL numérotées** (`src/store/migrations/NNN-nom.sql`), appliquées automatiquement au démarrage, dans une transaction, sous verrou (l'API et le worker peuvent démarrer ensemble). Pour faire évoluer le schéma : ajouter un fichier, ne jamais modifier un fichier déjà livré.
+
+Conservation : le détail fichier par fichier d'une compilation est effacé après **90 jours** ; les compilations (statut, poids totaux, LCP) et les analyses PageSpeed sont gardées **2 ans**. Purge quotidienne par le worker.
+
+`MASTER_KEY` chiffre les clés des sites et la clé PageSpeed (AES-256-GCM). La perdre ou la changer rend ces clés illisibles : il faudrait réappairer tous les sites.
 
 ## Démarrage rapide (local)
 
@@ -143,6 +206,11 @@ wp_remote_post( $service . '/v1/compile', [
 | `POST /v1/compile` | Demande de compilation : `{ url, lang?, families?, reason? }` | `202 { jobId }` |
 | `GET /v1/jobs/:id` | État d'une compilation du site | `{ state, result: { status, familiesApplied, familiesDisabled, lcp, published } }` |
 | `GET /v1/admin/overview` | Vue d'ensemble de la file (`Authorization: Bearer <ADMIN_TOKEN>`) | compteurs et 20 dernières compilations |
+| `POST /v1/pair` | Appairage (non signé, limité) : `{ code, home_url, receive_url?, plugin_version? }` | `{ site_id, secret, name, domains }` ; erreurs `invalid_code`, `used_code`, `expired_code`, `domain_mismatch` |
+| `GET /v1/pagespeed?url=` | Analyses PageSpeed du site (signée) | `{ configured, items: [{ strategy, status, score, metrics, field, reportUrl }] }` |
+| `POST /v1/pagespeed` | Lance une analyse mobile + ordinateur (signée) : `{ url }` | `202 { ids }` ; `400 pagespeed_not_configured` |
+| `POST /v1/rum/:site` | Mesure d'un visiteur (`sendBeacon`, option du site, origine vérifiée) | `204` |
+| `/admin`, `/admin/api/*` | Interface d'administration (session) | — |
 
 Codes d'erreur : `401` signature ou site invalide, `403` URL hors des domaines du site, `400` URL ou familles invalides.
 
@@ -196,8 +264,15 @@ Un problème corrigé dans une fiche l'est pour tous les sites qui utilisent cet
 | `DEBOUNCE_MS` | `30000` | Regroupement des demandes d'une même page |
 | `ADMIN_TOKEN` | — | Jeton de `/v1/admin/overview` |
 | `SITES_FILE` / `SITES_YAML` | `config/sites.yml` | Configuration des sites |
-| `MAX_ATTEMPTS` | `3` | Essais par page, isolation comprise |
+| `MAX_ATTEMPTS` | `4` | Essais par page, isolation comprise |
 | `MEASURE_RUNS` | `3` | Mesures de LCP bridées (0 pour désactiver) |
+| `DATABASE_URL` | — | PostgreSQL (construite par le docker-compose) |
+| `MASTER_KEY` | — | Chiffrement des clés en base (`openssl rand -hex 32`), obligatoire avec une base |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | — | Premier compte de l'interface `/admin` |
+| `PAGESPEED_API_KEY` | — | Clé PageSpeed (sinon saisie dans l'interface) |
+| `SESSION_TTL_HOURS` | `12` | Durée d'une session de l'interface |
+| `PAIRING_TTL_MINUTES` | `15` | Validité d'un code d'appairage |
+| `TRUST_PROXY` | `true` | IP et protocole réels derrière le proxy de Coolify |
 | `NOISE_CHECK` | `true` | Second rendu de l'original pour mesurer le bruit |
 | `BASELINE_CHECK` | `true` | Contrôle de départ : page sans optimisation comparée à l'original |
 | `SITE_RETRY_DELAY_MS` | `5000` | Attente d'une page dont le site est déjà en cours de compilation |
@@ -205,7 +280,10 @@ Un problème corrigé dans une fiche l'est pour tous les sites qui utilisent cet
 | `FULLPAGE_THRESHOLD` | `0.01` | Écart toléré sur la page complète |
 | `HEIGHT_TOLERANCE` | `0.02` | Écart de hauteur toléré |
 | `LCP_TOLERANCE` | `1.05` | LCP candidat au plus 5 % au-dessus de l'original |
-| `NAVIGATION_MODE` | `prefetch` | `prerender` : rendu complet anticipé (les statistiques s'exécutent alors aussi) |
+| `NAVIGATION_MODE` | `prerender` | `prefetch` : HTML seulement (réglable aussi par site dans l'interface) |
+| `DIAGNOSTICS` | `true` | Diagnostic CSS/JS/images pendant le rendu de référence |
+| `FONTS_HOSTS` | `fonts.googleapis.com` | Hôtes des feuilles de polices hébergées localement |
+| `PUBLIC_URL` | — | Adresse publique du service (ex. `https://compiler.exemple.fr`), nécessaire à la mesure des visiteurs |
 | `PAGE_TIMEOUT_MS` | `60000` | Délai de chargement d'une page |
 | `DATA_DIR` | `data` | Artefacts (captures, rapports) |
 | `ARTIFACTS_RETENTION_DAYS` | `30` | Purge automatique des artifacts |
@@ -249,7 +327,7 @@ L'intégration continue GitHub Actions (`.github/workflows/ci.yml`) lance les de
 
 Le couple service + plugin a été testé sur un vrai WordPress (7.2 bêta, SQLite, PHP 8.3) : enregistrement d'une page → demande signée → compilation → retour signé → page servie avant WordPress (`X-Page-Compiler: HIT`), LCP 700 → 264 ms sur la page de test. Voir le README du plugin pour le détail des scénarios.
 
-## Limites de cette version (0.2)
+## Limites de cette version (0.4)
 
 - **Images** : pas encore de conversion WebP/AVIF ni de redimensionnement ; seuls les attributs de chargement sont optimisés. Prévu avec sharp (phase 2).
 - **Polices** : pas encore d'hébergement local des Google Fonts.
